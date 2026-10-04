@@ -8,9 +8,9 @@ export interface VolumeDimensions {
 type VolumeManifest = Record<string, VolumeDimensions>;
 
 // The site is deployed under a sub-path (GitHub Pages project site), so
-// public assets must be prefixed with the configured `base`. `BASE_URL` always
-// ends with a trailing slash.
-const BASE_URL = import.meta.env.BASE_URL;
+// public assets must be prefixed with the configured `base`. `BASE_URL` does
+// not always include a trailing slash, so normalize it before joining paths.
+const BASE_URL = import.meta.env.BASE_URL.replace(/\/?$/, "/");
 
 // Resolve a base-relative public path (e.g. "/volumes/x.raw.zst") to a full
 // URL that includes the deployment base path.
