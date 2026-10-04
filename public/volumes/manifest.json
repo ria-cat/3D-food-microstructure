@@ -1,0 +1,17 @@
+{
+  "/volumes/wpi-0.05gg-clahe.raw.zst": {
+    "depth": 337,
+    "height": 486,
+    "width": 486
+  },
+  "/volumes/wpi-0.05gg-segmented.raw.zst": {
+    "depth": 675,
+    "height": 972,
+    "width": 972
+  },
+  "/volumes/wpi-0.05gg-skeleton.raw.zst": {
+    "depth": 675,
+    "height": 972,
+    "width": 972
+  }
+}

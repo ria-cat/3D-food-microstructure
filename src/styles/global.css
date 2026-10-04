@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+@theme {
+    --font-sans:
+        ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
+}
+
+@layer base {
+    html {
+        scroll-behavior: smooth;
+        color-scheme: dark;
+        -webkit-text-size-adjust: 100%;
+    }
+
+    body {
+        @apply bg-zinc-950 font-sans text-zinc-100 antialiased;
+    }
+
+    ::selection {
+        @apply bg-teal-500/30 text-white;
+    }
+}
+
+@layer components {
+    .btn {
+        @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold transition-all duration-200 focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:outline-none active:scale-[0.98];
+    }
+
+    .btn-primary {
+        @apply bg-teal-500 text-zinc-950 shadow-lg shadow-teal-500/25 hover:bg-teal-400;
+    }
+
+    .btn-ghost {
+        @apply border border-zinc-700 bg-zinc-900 text-zinc-100 hover:border-zinc-500 hover:bg-zinc-800;
+    }
+}

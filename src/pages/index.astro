@@ -1,0 +1,24 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Hero from "../components/Hero";
+import Gallery from "../components/Gallery";
+import Author from "../components/Author";
+---
+
+<Layout
+    title="Food Microstructure — 3D Atlas"
+    description="A curated collection of high-resolution 3D reconstructions of food microstructure."
+>
+    <Hero />
+    <Gallery client:load />
+    <Author
+        name="Ria Rodriguez"
+        role="PhD Fellow, Structural Food Science"
+        affiliation="Ingredient and Dairy Technology, University of Copenhagen"
+        bio=""
+        avatar="/author-avatar.jpg"
+        linkedin="https://www.linkedin.com/in/ria-rodriguez-0650b0204/"
+        researchGroup="https://example.edu/food-microstructure"
+        researchGroupLabel="Research group"
+    />
+</Layout>
