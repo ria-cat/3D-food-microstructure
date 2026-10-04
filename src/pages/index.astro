@@ -3,8 +3,6 @@ import Layout from "../layouts/Layout.astro";
 import Hero from "../components/Hero";
 import Gallery from "../components/Gallery";
 import Author from "../components/Author";
-
-const base = import.meta.env.BASE_URL;
 ---
 
 <Layout
@@ -18,7 +16,7 @@ const base = import.meta.env.BASE_URL;
         role="PhD Fellow, Structural Food Science"
         affiliation="Ingredient and Dairy Technology, University of Copenhagen"
         bio=""
-        avatar={`${base}author-avatar.jpg`}
+        avatar={`author-avatar.jpg`}
         linkedin="https://www.linkedin.com/in/ria-rodriguez-0650b0204/"
         researchGroup="https://example.edu/food-microstructure"
         researchGroupLabel="Research group"
