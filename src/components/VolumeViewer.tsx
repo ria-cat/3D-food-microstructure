@@ -8,7 +8,11 @@ import {
   isColormapName,
   type ColormapName,
 } from "../lib/colormaps";
-import { loadVolumeDimensions, type VolumeDimensions } from "../lib/volumes";
+import {
+  loadVolumeDimensions,
+  resolveVolumeUrl,
+  type VolumeDimensions,
+} from "../lib/volumes";
 
 // Cache decoded volume data so switching variants doesn't re-download the .raw.zst file.
 const volumeDataCache = new Map<string, Uint8Array>();
@@ -292,7 +296,7 @@ function VolumeCanvas({
       try {
         let data = volumeDataCache.get(url);
         if (!data) {
-          const response = await fetch(url);
+          const response = await fetch(resolveVolumeUrl(url));
           if (!response.ok) {
             throw new Error(`Failed to load volume (HTTP ${response.status}).`);
           }
