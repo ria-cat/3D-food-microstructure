@@ -19,9 +19,8 @@ export default function Hero() {
 				</h1>
 
 				<p className="mt-5 max-w-xl text-base leading-relaxed text-zinc-400 sm:text-lg">
-					A curated collection of high-resolution 3D reconstructions of food
-					microstructure — from porous bread crumb to cellular fruit tissue —
-					captured with micro-CT and microscopy.
+					A curated collection of high-resolution 3D reconstructions of model food
+					microstructure captured with Confocal Light Scanning Microscopy.
 				</p>
 
 				<div className="mt-8 flex flex-col gap-3 sm:flex-row sm:gap-4">
