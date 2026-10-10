@@ -40,7 +40,9 @@ import json
 import logging
 import os
 import time
+from collections.abc import Iterator
 from pathlib import Path
+from typing import cast
 
 import imagecodecs
 import numpy as np
@@ -48,7 +50,7 @@ import tifffile
 from joblib import Parallel, delayed
 
 ROOT = Path(__file__).resolve().parent.parent
-RAW_DIR = ROOT / "data" / "raw"
+RAW_DIR = ROOT / "data"
 OUTPUT_DIR = ROOT / "public" / "volumes"
 MANIFEST = OUTPUT_DIR / "manifest.json"
 
@@ -165,8 +167,13 @@ def process(source):
     )
 
     frames = []
-    results = Parallel(n_jobs=N_JOBS, prefer="threads", return_as="generator")(
-        delayed(compress_chunk)(chunk) for chunk in chunks
+    # joblib's Parallel.__call__ is unannotated, so the type checker can't tell
+    # that return_as="generator" yields results rather than None.
+    results = cast(
+        "Iterator[tuple[bytes, float]]",
+        Parallel(n_jobs=N_JOBS, prefer="threads", return_as="generator")(
+            delayed(compress_chunk)(chunk) for chunk in chunks
+        ),
     )
     for index, (chunk, (frame, elapsed)) in enumerate(zip(chunks, results), start=1):
         frames.append(frame)

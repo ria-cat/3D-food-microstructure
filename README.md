@@ -31,15 +31,12 @@ The source volumes are multi-page 8-bit TIFF z-stacks. Preprocessing turns them
 into zstd-compressed raw binary volumes that the browser can fetch and upload
 straight to the GPU, and records each volume's dimensions in a manifest.
 
-### 1. Set up the conda environment
+### 1. Install conda
 
-The preprocessing script depends on `numpy`, `tifffile`, `imagecodecs`, and
-`joblib`, declared in `preprocessing/environment.yml`:
-
-```sh
-conda env create -f preprocessing/environment.yml
-conda activate 3D_showcase
-```
+The preprocessing step needs [Conda](https://docs.conda.io) on your `PATH`. The
+`3D_showcase` environment — declared in `preprocessing/environment.yml` with
+`numpy`, `tifffile`, `imagecodecs`, and `joblib` — is created and kept in sync
+automatically when you run the pipeline, so you don't need to create it by hand.
 
 ### 2. Add the raw volumes
 
@@ -58,18 +55,16 @@ data/raw/<image>/
 
 ### 3. Run the pipeline
 
-With the conda environment active, run the preprocessing script (or the
-`pnpm preprocess` wrapper):
-
 ```sh
 pnpm preprocess
 ```
 
-This is equivalent to:
+This runs `preprocessing/run-preprocess.mjs`, which:
 
-```sh
-python3 preprocessing/preprocess.py   # write public/volumes/*.raw.zst + manifest.json
-```
+1. Verifies conda is available, stopping with an error if it isn't.
+2. Creates the `3D_showcase` environment from `preprocessing/environment.yml`,
+   or updates it if any declared dependency is missing.
+3. Runs `preprocessing/preprocess.py` inside that environment.
 
 `preprocess.py` reads every `.tif` directly from `data/raw/` and writes a
 slice-major `*.raw.zst` file under `public/volumes/` using zstd's maximum
