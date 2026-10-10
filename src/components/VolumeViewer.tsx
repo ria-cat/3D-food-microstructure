@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { decompress } from "fzstd";
 import {
   colormapLut,
   colorToLut,
@@ -9,13 +8,10 @@ import {
   type ColormapName,
 } from "../lib/colormaps";
 import {
+  loadVolumeData,
   loadVolumeDimensions,
-  resolveVolumeUrl,
   type VolumeDimensions,
 } from "../lib/volumes";
-
-// Cache decoded volume data so switching variants doesn't re-download the .raw.zst file.
-const volumeDataCache = new Map<string, Uint8Array>();
 
 interface VolumeViewerProps {
   url: string;
@@ -333,27 +329,7 @@ function VolumeCanvas({
 
     (async () => {
       try {
-        let data = volumeDataCache.get(url);
-        if (!data) {
-          const response = await fetch(resolveVolumeUrl(url));
-          if (!response.ok) {
-            throw new Error(`Failed to load volume (HTTP ${response.status}).`);
-          }
-          const buffer = await response.arrayBuffer();
-          let decoded = new Uint8Array(buffer);
-          if (url.endsWith(".zst")) {
-            decoded = decompress(decoded);
-          }
-
-          const expected = width * height * depth;
-          if (decoded.length !== expected) {
-            throw new Error(
-              `Unexpected volume size: got ${decoded.length} bytes, expected ${expected}.`,
-            );
-          }
-          volumeDataCache.set(url, decoded);
-          data = decoded;
-        }
+        const data = await loadVolumeData(url, { width, height, depth });
         if (cancelled) return;
 
         const texture = new THREE.Data3DTexture(data, width, height, depth);

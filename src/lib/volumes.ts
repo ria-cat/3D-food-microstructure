@@ -1,3 +1,5 @@
+import { decompress } from "fzstd";
+
 // Voxel dimensions for a volume, keyed by its public URL in the manifest.
 export interface VolumeDimensions {
   width: number;
@@ -52,4 +54,67 @@ export async function loadVolumeDimensions(
     throw new Error(`No dimensions found for volume "${url}".`);
   }
   return dimensions;
+}
+
+// Decoded voxel data, keyed by public URL. Cached so switching variants (or
+// reopening a sample) never re-downloads and re-decompresses a .raw.zst file.
+const volumeDataCache = new Map<string, Uint8Array>();
+
+// In-flight volume requests, keyed by public URL. Sharing the promise means a
+// variant that is already being prefetched is never fetched twice: a viewer
+// that switches to it simply awaits the existing request.
+const volumeDataRequests = new Map<string, Promise<Uint8Array>>();
+
+async function fetchVolumeData(
+  url: string,
+  dimensions: VolumeDimensions,
+): Promise<Uint8Array> {
+  const response = await fetch(resolveVolumeUrl(url));
+  if (!response.ok) {
+    throw new Error(`Failed to load volume (HTTP ${response.status}).`);
+  }
+  const buffer = await response.arrayBuffer();
+  let decoded: Uint8Array = new Uint8Array(buffer);
+  if (url.endsWith(".zst")) {
+    decoded = decompress(decoded);
+  }
+
+  const expected = dimensions.width * dimensions.height * dimensions.depth;
+  if (decoded.length !== expected) {
+    throw new Error(
+      `Unexpected volume size: got ${decoded.length} bytes, expected ${expected}.`,
+    );
+  }
+
+  volumeDataCache.set(url, decoded);
+  return decoded;
+}
+
+// Load (and cache) the decoded voxel data for a volume. Concurrent callers for
+// the same url share a single request, so a variant that is already downloading
+// is awaited rather than fetched again.
+export function loadVolumeData(
+  url: string,
+  dimensions: VolumeDimensions,
+): Promise<Uint8Array> {
+  const cached = volumeDataCache.get(url);
+  if (cached) return Promise.resolve(cached);
+
+  const inFlight = volumeDataRequests.get(url);
+  if (inFlight) return inFlight;
+
+  const request = fetchVolumeData(url, dimensions).finally(() => {
+    volumeDataRequests.delete(url);
+  });
+  volumeDataRequests.set(url, request);
+  return request;
+}
+
+// Start loading a volume in the background without awaiting it. Errors are
+// swallowed here; a viewer that later needs the volume will surface them.
+export function prefetchVolumeData(
+  url: string,
+  dimensions: VolumeDimensions,
+): void {
+  void loadVolumeData(url, dimensions).catch(() => {});
 }

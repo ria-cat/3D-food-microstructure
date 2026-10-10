@@ -13,6 +13,7 @@
     "preprocess": "python3 preprocessing/compress_clahe.py && python3 preprocessing/compress_variants.py && python3 preprocessing/convert-volumes.py"
   },
   "dependencies": {
+    "@astrojs/check": "^0.9.10",
     "@astrojs/react": "^7.0.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.3.0",
@@ -22,7 +23,8 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "tailwindcss": "^4.3.3",
-    "three": "^0.186.1"
+    "three": "^0.186.1",
+    "typescript": "^7.0.2"
   },
   "allowScripts": {
     "esbuild": true

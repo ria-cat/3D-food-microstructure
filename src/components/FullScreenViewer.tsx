@@ -2,6 +2,11 @@ import { useEffect, useState } from "react";
 import type { Sample, VolumeRenderOptions } from "../data/samples";
 import VolumeViewer from "./VolumeViewer";
 import ColormapSelector, { type ColorSelection } from "./ColormapSelector";
+import {
+  loadVolumeData,
+  loadVolumeDimensions,
+  prefetchVolumeData,
+} from "../lib/volumes";
 
 function CloseIcon() {
   return (
@@ -57,6 +62,37 @@ export default function FullScreenViewer({
       document.body.style.overflow = "";
     };
   }, [onClose]);
+
+  // Prefetch the non-default variants as soon as the default (CLAHE) volume has
+  // been downloaded. The default is always fetched on its own; the remaining
+  // variants are then fetched in parallel. The loader dedupes in-flight
+  // requests, so switching to a variant mid-download just awaits the prefetch
+  // instead of starting a second fetch.
+  useEffect(() => {
+    let cancelled = false;
+    const [defaultVariant, ...otherVariants] = sample.variants;
+
+    loadVolumeDimensions(defaultVariant.volume.url)
+      .then((dimensions) =>
+        loadVolumeData(defaultVariant.volume.url, dimensions),
+      )
+      .then(() => {
+        if (cancelled) return;
+        for (const variant of otherVariants) {
+          const { url } = variant.volume;
+          loadVolumeDimensions(url)
+            .then((dimensions) => prefetchVolumeData(url, dimensions))
+            .catch(() => {});
+        }
+      })
+      .catch(() => {
+        // The viewer surfaces load errors; prefetching is best-effort.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sample]);
 
   const colormap = selection.type === "colormap" ? selection.name : undefined;
   const color = selection.type === "color" ? selection.value : undefined;
