@@ -33,8 +33,8 @@ straight to the GPU, and records each volume's dimensions in a manifest.
 
 ### 1. Set up the conda environment
 
-The preprocessing scripts depend on `numpy`, `tifffile`, and `imagecodecs`,
-declared in `preprocessing/environment.yml`:
+The preprocessing script depends on `numpy`, `tifffile`, `imagecodecs`, and
+`joblib`, declared in `preprocessing/environment.yml`:
 
 ```sh
 conda env create -f preprocessing/environment.yml
@@ -58,8 +58,8 @@ data/raw/<image>/
 
 ### 3. Run the pipeline
 
-With the conda environment active, run the three steps (or the combined
-`pnpm preprocess` script):
+With the conda environment active, run the preprocessing script (or the
+`pnpm preprocess` wrapper):
 
 ```sh
 pnpm preprocess
@@ -68,22 +68,20 @@ pnpm preprocess
 This is equivalent to:
 
 ```sh
-python3 preprocessing/compress_clahe.py    # downsample + losslessly compress the original
-python3 preprocessing/compress_variants.py # losslessly compress segmented/skeleton variants
-python3 preprocessing/convert-volumes.py   # write public/volumes/*.raw.zst + manifest.json
+python3 preprocessing/preprocess.py   # write public/volumes/*.raw.zst + manifest.json
 ```
 
-- `compress_clahe.py` downsamples the original volume by 2× on every axis
-  (area-averaged) and writes a zstd-compressed TIFF to `data/compressed/`.
-  Downsampling is required to keep the volume within the browser's ~100 MB
-  budget.
-- `compress_variants.py` losslessly compresses every non-CLAHE volume at full
-  resolution into `data/compressed/`.
-- `convert-volumes.py` converts the compressed TIFFs into slice-major
-  `*.raw.zst` files under `public/volumes/` and writes `manifest.json`, which
-  maps each volume URL to its `{width, height, depth}`.
+`preprocess.py` reads every `.tif` directly from `data/raw/` and writes a
+slice-major `*.raw.zst` file under `public/volumes/` using zstd's maximum
+compression level, then writes `manifest.json`, which maps each volume URL to
+its `{width, height, depth}`. There is no intermediate compressed-TIFF step.
 
-Each script verifies its output (round-trip check) and exits non-zero on
+- Analog volumes (anything that is not a binary mask, e.g. the CLAHE original)
+  are downsampled by 2× on every axis (area-averaged). Downsampling is required
+  to keep the volume within the browser's ~100 MB budget.
+- Binary volumes (segmented/skeleton) are kept at full resolution.
+
+The script verifies each output (round-trip check) and exits non-zero on
 failure.
 
 ### 4. Register the sample

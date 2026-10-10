@@ -10,7 +10,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "preprocess": "python3 preprocessing/compress_clahe.py && python3 preprocessing/compress_variants.py && python3 preprocessing/convert-volumes.py"
+    "preprocess": "python3 preprocessing/preprocess.py"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.10",
