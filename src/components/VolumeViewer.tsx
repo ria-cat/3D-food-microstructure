@@ -178,6 +178,11 @@ function VolumeCanvas({
 }: VolumeCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const uniformsRef = useRef<Uniforms | null>(null);
+  // The colormap texture lives in a ref so it survives the main effect
+  // recreating the uniforms (which happens whenever the volume or its render
+  // options change). Without this, that re-run would reset `uColorMap` to null
+  // and the volume would render black until the colormap was changed.
+  const colormapTextureRef = useRef<THREE.DataTexture | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
     "loading",
   );
@@ -274,7 +279,7 @@ function VolumeCanvas({
 
     const uniforms: Uniforms = {
       uVolume: { value: null },
-      uColorMap: { value: null },
+      uColorMap: { value: colormapTextureRef.current },
       uCamPos: { value: new THREE.Vector3() },
       uBoxMin: { value: box.clone().multiplyScalar(-0.5) },
       uBoxMax: { value: box.clone().multiplyScalar(0.5) },
@@ -401,9 +406,6 @@ function VolumeCanvas({
 
   // Swap the colormap lookup table without reloading the volume.
   useEffect(() => {
-    const uniforms = uniformsRef.current;
-    if (!uniforms) return;
-
     const lut =
       colormap && isColormapName(colormap)
         ? colormapLut(colormap)
@@ -419,12 +421,18 @@ function VolumeCanvas({
     texture.generateMipmaps = false;
     texture.needsUpdate = true;
 
-    uniforms.uColorMap.value = texture;
+    colormapTextureRef.current = texture;
+    const uniforms = uniformsRef.current;
+    if (uniforms) uniforms.uColorMap.value = texture;
 
     return () => {
       texture.dispose();
-      if (uniforms.uColorMap.value === texture) {
-        uniforms.uColorMap.value = null;
+      if (colormapTextureRef.current === texture) {
+        colormapTextureRef.current = null;
+      }
+      const current = uniformsRef.current;
+      if (current && current.uColorMap.value === texture) {
+        current.uColorMap.value = null;
       }
     };
   }, [colormap, color]);
