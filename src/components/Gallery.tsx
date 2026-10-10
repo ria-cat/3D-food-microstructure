@@ -1,10 +1,15 @@
 import { useEffect, useState } from "react";
-import type { Sample } from "../data/variants";
+import type { Sample, ThumbnailImage } from "../data/variants";
 import { loadSamples } from "../lib/volumes";
 import SampleCard from "./SampleCard";
 import FullScreenViewer from "./FullScreenViewer";
 
-export default function Gallery() {
+interface GalleryProps {
+  // Optimized preview images keyed by sample id, generated in index.astro.
+  thumbnails?: Record<string, ThumbnailImage>;
+}
+
+export default function Gallery({ thumbnails = {} }: GalleryProps) {
   const [samples, setSamples] = useState<Sample[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Sample | null>(null);
@@ -57,6 +62,7 @@ export default function Gallery() {
             <SampleCard
               key={sample.id}
               sample={sample}
+              thumbnail={thumbnails[sample.id]}
               onOpen={() => setSelected(sample)}
             />
           ))}

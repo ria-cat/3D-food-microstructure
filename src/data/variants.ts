@@ -29,6 +29,16 @@ export interface Sample {
   variants: VolumeVariant[];
 }
 
+// A sample's optimized preview image. Astro's image pipeline generates it at
+// build time (the `<Image />` component is unavailable inside a React island),
+// and the resulting URLs are passed down to the client.
+export interface ThumbnailImage {
+  src: string;
+  srcSet?: string;
+  width: number;
+  height: number;
+}
+
 // Physical voxel spacing shared by every volume (isotropic, 1 voxel = 1 unit).
 export const DEFAULT_SPACING: [number, number, number] = [1, 1, 1];
 

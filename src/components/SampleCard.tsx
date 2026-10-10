@@ -1,4 +1,4 @@
-import type { Sample } from "../data/variants";
+import type { Sample, ThumbnailImage } from "../data/variants";
 
 function CubeIcon() {
   return (
@@ -22,36 +22,68 @@ function CubeIcon() {
 
 interface SampleCardProps {
   sample: Sample;
+  thumbnail?: ThumbnailImage;
   onOpen: () => void;
 }
 
-export default function SampleCard({ sample, onOpen }: SampleCardProps) {
+export default function SampleCard({
+  sample,
+  thumbnail,
+  onOpen,
+}: SampleCardProps) {
   return (
-    <li className="group flex flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 transition-transform duration-200 hover:-translate-y-1">
+    <li className="group flex flex-col rounded-2xl border border-zinc-800 bg-zinc-900 transition-transform duration-200 hover:-translate-y-1">
       <button
         type="button"
         onClick={onOpen}
         aria-label={`View ${sample.title} in 3D`}
-        className="relative block aspect-square w-full cursor-pointer overflow-hidden bg-zinc-950 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-400/70"
+        className="relative block aspect-square w-full cursor-pointer overflow-hidden rounded-t-[15px] bg-zinc-950 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-400/70"
       >
-        {/* Placeholder preview — to be replaced with a real preview image. */}
+        {thumbnail ? (
+          <>
+            <img
+              src={thumbnail.src}
+              srcSet={thumbnail.srcSet}
+              width={thumbnail.width}
+              height={thumbnail.height}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            />
+            <div
+              aria-hidden
+              className="absolute inset-0 bg-linear-to-t from-zinc-950/80 via-zinc-950/10 to-transparent"
+            />
+          </>
+        ) : (
+          <>
+            {/* Placeholder shown until a preview image has been generated. */}
+            <div
+              aria-hidden
+              className="absolute inset-0 bg-linear-to-br from-teal-500/20 via-zinc-900 to-amber-500/15"
+            />
+            <div
+              aria-hidden
+              className="absolute inset-0 opacity-40"
+              style={{
+                backgroundImage:
+                  "radial-gradient(rgba(255,255,255,0.07) 1px, transparent 1px)",
+                backgroundSize: "14px 14px",
+              }}
+            />
+          </>
+        )}
         <div
-          aria-hidden
-          className="absolute inset-0 bg-linear-to-br from-teal-500/20 via-zinc-900 to-amber-500/15"
-        />
-        <div
-          aria-hidden
-          className="absolute inset-0 opacity-40"
-          style={{
-            backgroundImage:
-              "radial-gradient(rgba(255,255,255,0.07) 1px, transparent 1px)",
-            backgroundSize: "14px 14px",
-          }}
-        />
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-          <span className="text-teal-300/80 transition-colors group-hover:text-teal-200">
-            <CubeIcon />
-          </span>
+          className={`absolute inset-0 flex flex-col items-center gap-3 ${
+            thumbnail ? "justify-end pb-4" : "justify-center"
+          }`}
+        >
+          {thumbnail ? null : (
+            <span className="text-teal-300/80 transition-colors group-hover:text-teal-200">
+              <CubeIcon />
+            </span>
+          )}
           <span className="rounded-full bg-zinc-900/80 px-3 py-1 text-xs font-semibold text-zinc-200">
             View in 3D
           </span>

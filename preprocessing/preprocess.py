@@ -50,6 +50,11 @@ carries each sample's title and description:
       ]
     }
 
+Each sample's `raw.tif` also yields a thumbnail preview: a cropped middle
+slice, colored with the raw variant's default colormap and written to
+`src/assets/thumbnails/<sample>.png`. Keeping it under `src/` (rather than
+`public/`) lets Astro import and optimize it at build time.
+
 Progress is reported through the `logging` module (INFO level).
 
 By default every volume is re-processed; pass `--skip-existing` to skip volumes
@@ -91,6 +96,26 @@ SAMPLE_META = "sample.yml"
 # The variant every sample must provide. It is the default volume shown when a
 # sample is opened.
 RAW_VARIANT = "raw"
+
+# Thumbnail previews are written here so Astro can import and optimize them at
+# build time; files under `public/` are served as-is and never processed.
+THUMBNAIL_DIR = ROOT / "src" / "assets" / "thumbnails"
+
+# The raw variant's default render configuration, mirrored from
+# `src/data/variants.ts` and `src/lib/colormaps.ts` so a thumbnail matches what
+# the viewer shows when the sample is opened.
+INFERNO_STOPS = [
+    (0.0, 0, 0, 4),
+    (0.25, 66, 10, 105),
+    (0.5, 145, 32, 110),
+    (0.75, 236, 99, 42),
+    (1.0, 252, 255, 164),
+]
+THUMBNAIL_CLIM = (0.15, 0.85)
+
+# Fraction of the middle slice kept when cropping the thumbnail, so the preview
+# is zoomed in on the central structure instead of showing the whole slice.
+THUMBNAIL_CROP = 0.7
 
 MB = 1024 * 1024
 
@@ -177,6 +202,80 @@ def is_binary(volume):
     """True when the volume holds at most two distinct values (a binary mask)."""
     counts = np.bincount(volume.reshape(-1), minlength=256)
     return np.count_nonzero(counts) <= 2
+
+
+def round_half_up(value):
+    """Round to the nearest integer, matching JavaScript's Math.round."""
+    return int(value + 0.5)
+
+
+def sample_stops(stops, t):
+    """Linearly interpolate a colormap's stops at position `t` in [0, 1]."""
+    t = min(1.0, max(0.0, t))
+    i = 0
+    while i < len(stops) - 2 and stops[i + 1][0] < t:
+        i += 1
+    a = stops[i]
+    b = stops[i + 1]
+    span = b[0] - a[0]
+    f = 0.0 if span == 0 else (t - a[0]) / span
+    return [round_half_up(a[c] + (b[c] - a[c]) * f) for c in (1, 2, 3)]
+
+
+def colormap_lut(stops, size=256):
+    """Build an (size, 3) uint8 lookup table by interpolating `stops`.
+
+    Mirrors `colormapLut` in src/lib/colormaps.ts so the thumbnail uses exactly
+    the same colors as the viewer.
+    """
+    lut = np.empty((size, 3), dtype=np.uint8)
+    for i in range(size):
+        t = 0.0 if size == 1 else i / (size - 1)
+        lut[i] = sample_stops(stops, t)
+    return lut
+
+
+def colorize(intensity):
+    """Colorize an 8-bit intensity image with the raw variant's default look.
+
+    Applies the same contrast window (`clim`) and colormap the viewer uses for
+    the raw volume, so the thumbnail matches what opening the sample shows.
+    """
+    low, high = THUMBNAIL_CLIM
+    normalized = (intensity.astype(np.float32) / 255.0 - low) / (high - low)
+    normalized = np.clip(normalized, 0.0, 1.0)
+    indices = np.floor(normalized * 255.0 + 0.5).astype(np.uint8)
+    return colormap_lut(INFERNO_STOPS)[indices]
+
+
+def center_crop(image, fraction):
+    """Crop the central `fraction` of an image along both axes."""
+    height, width = image.shape[:2]
+    crop_h = int(height * fraction)
+    crop_w = int(width * fraction)
+    top = (height - crop_h) // 2
+    left = (width - crop_w) // 2
+    return image[top : top + crop_h, left : left + crop_w]
+
+
+def thumbnail_target(source):
+    """Output path for a sample's thumbnail, keyed by the sample folder name."""
+    sample_id = source.relative_to(RAW_DIR).parts[0]
+    return THUMBNAIL_DIR / f"{sample_id}.png"
+
+
+def write_thumbnail(volume, target):
+    """Write a colormapped, cropped middle slice of `volume` as a PNG.
+
+    The middle slice gives a representative 2D preview of the 3D volume, colored
+    with the raw variant's default colormap and cropped to zoom in on the
+    central structure.
+    """
+    target.parent.mkdir(parents=True, exist_ok=True)
+    middle = volume[volume.shape[0] // 2]
+    image = colorize(center_crop(middle, THUMBNAIL_CROP))
+    target.write_bytes(imagecodecs.png_encode(image))
+    logger.info("Wrote %s", target.relative_to(ROOT))
 
 
 def sample_folders():
@@ -315,29 +414,45 @@ def load_manifest_dimensions():
     return dimensions
 
 
+def load_volume(source):
+    """Read a TIFF and downsample it when it is an analog (non-binary) volume."""
+    logger.info("Reading %s", source.relative_to(ROOT))
+    volume = np.ascontiguousarray(tifffile.imread(source), dtype=np.uint8)
+    logger.info("  shape=%s dtype=%s", volume.shape, volume.dtype)
+
+    if is_binary(volume):
+        logger.info("  binary volume — keeping full resolution")
+    else:
+        logger.info("  analog volume — downsampling %dx per axis", DOWNSAMPLE)
+        volume = downsample(volume, DOWNSAMPLE)
+    return np.ascontiguousarray(volume, dtype=np.uint8)
+
+
+def write_thumbnail_from_source(source, target):
+    """Generate a sample's thumbnail by reading its raw volume from disk."""
+    write_thumbnail(load_volume(source), target)
+
+
 def process(source):
     """Read, conditionally downsample, and compress one volume.
 
     The output mirrors the input's folder name, so `data/<sample>/<variant>.tif`
-    becomes `public/volumes/<sample>/<variant>.zst`.
+    becomes `public/volumes/<sample>/<variant>.zst`. The `raw` variant also
+    writes its thumbnail preview.
 
-    Returns the volume's public URL and its `{width, height, depth}`.
+    Returns the volume's public URL, its `{width, height, depth}`, and the
+    thumbnail path (or None for non-raw variants).
     """
     target = target_for(source)
     target.parent.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
 
-    logger.info("Reading %s", source.relative_to(ROOT))
-    volume = np.ascontiguousarray(tifffile.imread(source), dtype=np.uint8)
-    logger.info("  shape=%s dtype=%s", volume.shape, volume.dtype)
+    data = load_volume(source)
 
-    binary = is_binary(volume)
-    if binary:
-        logger.info("  binary volume — keeping full resolution")
-    else:
-        logger.info("  analog volume — downsampling %dx per axis", DOWNSAMPLE)
-        volume = downsample(volume, DOWNSAMPLE)
-    data = np.ascontiguousarray(volume, dtype=np.uint8)
+    thumbnail = None
+    if source.stem.lower() == RAW_VARIANT:
+        thumbnail = thumbnail_target(source)
+        write_thumbnail(data, thumbnail)
 
     n_chunks = min(N_JOBS, max(1, data.size // MIN_CHUNK_BYTES))
     chunks = split_chunks(data, n_chunks)
@@ -381,11 +496,15 @@ def process(source):
         target.stat().st_size / MB,
         time.perf_counter() - started,
     )
-    return volume_url(target), {
-        "width": int(width),
-        "height": int(height),
-        "depth": int(depth),
-    }
+    return (
+        volume_url(target),
+        {
+            "width": int(width),
+            "height": int(height),
+            "depth": int(depth),
+        },
+        thumbnail,
+    )
 
 
 def parse_args(argv=None):
@@ -432,6 +551,7 @@ def main() -> None:
 
         logger.info("Sample %s: %d volume(s)", folder.name, len(volumes))
         variants = []
+        thumbnail = None
         for source in volumes:
             target = target_for(source)
             url = volume_url(target)
@@ -442,11 +562,13 @@ def main() -> None:
                 )
             else:
                 try:
-                    url, dimensions = process(source)
+                    url, dimensions, thumb = process(source)
                 except Exception as error:  # noqa: BLE001 - report and continue
                     failed = True
                     logger.error("%s: %s", source.name, error)
                     continue
+                if thumb is not None:
+                    thumbnail = thumb
             variants.append(
                 {
                     "type": source.stem,
@@ -460,6 +582,20 @@ def main() -> None:
         if not variants:
             logger.warning("No volumes processed for %s — skipping", folder.name)
             continue
+
+        # Ensure the sample has a thumbnail even when its raw volume was skipped
+        # (e.g. the first run after thumbnails were introduced).
+        thumb_target = THUMBNAIL_DIR / f"{folder.name}.png"
+        if thumbnail is None and not (args.skip_existing and thumb_target.exists()):
+            raw_source = next(
+                (s for s in volumes if s.stem.lower() == RAW_VARIANT), None
+            )
+            if raw_source is not None:
+                try:
+                    write_thumbnail_from_source(raw_source, thumb_target)
+                except Exception as error:  # noqa: BLE001 - report and continue
+                    failed = True
+                    logger.error("%s: %s", raw_source.name, error)
 
         samples.append(
             {
