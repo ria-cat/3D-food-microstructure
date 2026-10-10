@@ -2,8 +2,8 @@
 import Layout from "../layouts/Layout.astro";
 import Hero from "../components/Hero";
 import Gallery from "../components/Gallery";
-import Author from "../components/Author";
-import { resolvePublicUrl } from "../lib/assets";
+import Author from "../components/Author.astro";
+import authorAvatar from "../assets/author-avatar.jpg";
 ---
 
 <Layout
@@ -17,7 +17,7 @@ import { resolvePublicUrl } from "../lib/assets";
         role="PhD Fellow, Structural Food Science"
         affiliation="Ingredient and Dairy Technology, University of Copenhagen"
         bio=""
-        avatar={resolvePublicUrl("/author-avatar.jpg")}
+        avatar={authorAvatar}
         linkedin="https://www.linkedin.com/in/ria-rodriguez-0650b0204/"
         researchGroup="https://example.edu/food-microstructure"
         researchGroupLabel="Research group"
