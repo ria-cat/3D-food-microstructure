@@ -450,17 +450,19 @@ function VolumeCanvas({
 // canvas. Keeping this separate lets the canvas assume dimensions are known.
 export default function VolumeViewer(props: VolumeViewerProps) {
   const { url } = props;
-  const [dimensions, setDimensions] = useState<VolumeDimensions | null>(null);
+  const [resolved, setResolved] = useState<{
+    url: string;
+    dimensions: VolumeDimensions;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setDimensions(null);
     setError(null);
 
     loadVolumeDimensions(url)
-      .then((resolved) => {
-        if (!cancelled) setDimensions(resolved);
+      .then((dimensions) => {
+        if (!cancelled) setResolved({ url, dimensions });
       })
       .catch((err) => {
         if (!cancelled) {
@@ -476,6 +478,12 @@ export default function VolumeViewer(props: VolumeViewerProps) {
       cancelled = true;
     };
   }, [url]);
+
+  // Only use dimensions that belong to the current url. Otherwise, when the
+  // variant changes, the canvas would briefly render with the new url but the
+  // previous volume's dimensions, triggering a redundant download of the new
+  // volume before it is unmounted and remounted.
+  const dimensions = resolved?.url === url ? resolved.dimensions : null;
 
   return (
     <div className="absolute inset-0">
