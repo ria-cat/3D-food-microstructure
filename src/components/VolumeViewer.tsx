@@ -213,7 +213,15 @@ function VolumeCanvas({
 
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(0x000000, 0);
+    // The backing store is sized with the device pixel ratio in `resize()`,
+    // which is called with `updateStyle: false` so it leaves the CSS size
+    // alone. Pin the canvas to its container with CSS instead: otherwise the
+    // element is displayed at its attribute size (`height x devicePixelRatio`
+    // CSS pixels), so on HiDPI devices (i.e. phones) the canvas is larger than
+    // its container and the volume renders off-centre.
     renderer.domElement.style.display = "block";
+    renderer.domElement.style.width = "100%";
+    renderer.domElement.style.height = "100%";
     root.appendChild(renderer.domElement);
     disposables.push(renderer);
 
