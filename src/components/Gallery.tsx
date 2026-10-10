@@ -1,10 +1,31 @@
-import { useState } from "react";
-import { samples, type Sample } from "../data/samples";
+import { useEffect, useState } from "react";
+import type { Sample } from "../data/variants";
+import { loadSamples } from "../lib/volumes";
 import SampleCard from "./SampleCard";
 import FullScreenViewer from "./FullScreenViewer";
 
 export default function Gallery() {
+  const [samples, setSamples] = useState<Sample[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Sample | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadSamples()
+      .then((loaded) => {
+        if (!cancelled) setSamples(loaded);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(
+            err instanceof Error ? err.message : "Failed to load samples.",
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <section
@@ -24,15 +45,23 @@ export default function Gallery() {
         </p>
       </div>
 
-      <ul className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {samples.map((sample) => (
-          <SampleCard
-            key={sample.id}
-            sample={sample}
-            onOpen={() => setSelected(sample)}
-          />
-        ))}
-      </ul>
+      {error ? (
+        <p className="mt-10 text-sm text-zinc-400">{error}</p>
+      ) : samples === null ? (
+        <div className="mt-10 flex justify-center">
+          <span className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-teal-400" />
+        </div>
+      ) : (
+        <ul className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {samples.map((sample) => (
+            <SampleCard
+              key={sample.id}
+              sample={sample}
+              onOpen={() => setSelected(sample)}
+            />
+          ))}
+        </ul>
+      )}
 
       {selected ? (
         <FullScreenViewer sample={selected} onClose={() => setSelected(null)} />

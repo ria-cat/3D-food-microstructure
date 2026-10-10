@@ -7,3 +7,4 @@ dependencies:
   - tifffile=2026.9.20
   - imagecodecs=2024.9.22
   - joblib=1.6.0
+  - pyyaml=6.0.2

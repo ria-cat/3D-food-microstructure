@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Sample, VolumeRenderOptions } from "../data/samples";
+import type { Sample, VolumeRenderOptions } from "../data/variants";
 import VolumeViewer from "./VolumeViewer";
 import ColormapSelector, { type ColorSelection } from "./ColormapSelector";
 import {
@@ -63,7 +63,7 @@ export default function FullScreenViewer({
     };
   }, [onClose]);
 
-  // Prefetch the non-default variants as soon as the default (CLAHE) volume has
+  // Prefetch the non-default variants as soon as the default (raw) volume has
   // been downloaded. The default is always fetched on its own; the remaining
   // variants are then fetched in parallel. The loader dedupes in-flight
   // requests, so switching to a variant mid-download just awaits the prefetch

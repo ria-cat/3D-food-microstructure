@@ -7,8 +7,24 @@ The site renders each sample as an interactive volume directly in the browser:
 the raw voxel data is fetched, decompressed client-side, and uploaded to the GPU
 as a `THREE.Data3DTexture`, so visitors can rotate, slice, and recolor the
 volumes without any server-side rendering. Each sample exposes multiple
-variants (original, segmented, skeleton) that can be explored in a full-screen
+variants (raw, segmented, skeleton) that can be explored in a full-screen
 viewer.
+
+## Data flow
+
+```mermaid
+flowchart TD
+    A["sample.yml (title, description)"] --> C[preprocess.py]
+    B["*.tif volumes"] --> C
+    C --> D["manifest.json (samples + variants + dimensions)"]
+    D --> E["Gallery / FullScreenViewer"]
+    F["variants.ts (per-variant defaults)"] --> E
+```
+
+Each sample is a folder under `data/` holding its volumes and a `sample.yml`.
+`preprocess.py` compresses the volumes and writes `manifest.json`, which the
+gallery reads at runtime; the render configuration for each variant type comes
+from the global defaults in `src/data/variants.ts`.
 
 ## Tech stack
 
@@ -35,20 +51,34 @@ straight to the GPU, and records each volume's dimensions in a manifest.
 
 The preprocessing step needs [Conda](https://docs.conda.io) on your `PATH`. The
 `3D_showcase` environment — declared in `preprocessing/environment.yml` with
-`numpy`, `tifffile`, `imagecodecs`, and `joblib` — is created and kept in sync
-automatically when you run the pipeline, so you don't need to create it by hand.
+`numpy`, `tifffile`, `imagecodecs`, `joblib`, and `pyyaml` — is created and kept
+in sync automatically when you run the pipeline, so you don't need to create it
+by hand.
 
 ### 2. Add the raw volumes
 
-Place each image in its own folder under `data/`, named after its original
-(CLAHE) volume. The scripts discover folders automatically:
+Place each sample in its own folder under `data/`, named after its original
+(raw) volume. Each folder must contain a `sample.yml` with the sample's
+`title` and `description`; the scripts discover folders automatically:
 
 ```text
-data/<image>/
-    clahe.tif        # original volume (required)
+data/<sample>/
+    sample.yml       # required: title + description
+    raw.tif          # required: original volume
     segmented.tif    # optional variant
     skeleton.tif     # optional variant
 ```
+
+```yaml
+# data/<sample>/sample.yml
+title: WPI 0.05% GG
+description: Acid-induced composite gel (3% w/w WPI, 0.05% w/w GG).
+```
+
+The variant type is the source file's stem (e.g. `raw.tif` -> `raw`), which
+the viewer maps to a global render configuration defined in
+`src/data/variants.ts`. Adding a sample therefore only requires the volumes and
+`sample.yml` — no frontend changes.
 
 > Note: `*.tif` files are git-ignored, so raw and intermediate volumes are not
 > committed. Only the generated `public/volumes/**/*.raw.zst` files are tracked.
@@ -67,10 +97,11 @@ This runs `preprocessing/run-preprocess.ts`, which:
 3. Runs `preprocessing/preprocess.py` inside that environment.
 
 `preprocess.py` reads every `.tif` directly from `data/` and writes a
-slice-major `*.raw.zst` file under `public/volumes/<image>/`, mirroring the
+slice-major `*.raw.zst` file under `public/volumes/<sample>/`, mirroring the
 input folder name, using zstd's maximum compression level. It then writes
-`manifest.json`, which maps each volume URL to its `{width, height, depth}`.
-There is no intermediate compressed-TIFF step.
+`manifest.json`, which groups each sample's volumes and records their
+`{width, height, depth}` alongside the sample's title and description. There is
+no intermediate compressed-TIFF step.
 
 Volumes whose `.raw.zst` output already exists are skipped, reusing their
 existing manifest entry. The `preprocess` npm script passes `--skip-existing`,
@@ -78,7 +109,7 @@ so `pnpm preprocess` skips them by default; run
 `pnpm preprocess -- --no-skip-existing` to force a full re-run (e.g. after
 changing a source `.tif`).
 
-- Analog volumes (anything that is not a binary mask, e.g. the CLAHE original)
+- Analog volumes (anything that is not a binary mask, e.g. the raw original)
   are downsampled by 2× on every axis (area-averaged). Downsampling is required
   to keep the volume within the browser's ~100 MB budget.
 - Binary volumes (segmented/skeleton) are kept at full resolution.
@@ -88,9 +119,11 @@ failure.
 
 ### 4. Register the sample
 
-Add an entry to `src/data/samples.ts` pointing at the generated volume URLs
-(e.g. `/volumes/<image>/clahe.raw.zst`). Dimensions are read from the manifest
-at runtime, so they do not need to be hardcoded.
+Nothing else to do: the gallery reads the generated `manifest.json` at runtime,
+so a sample appears as soon as its volumes and `sample.yml` are preprocessed.
+Dimensions and the sample's title/description come from the manifest, and the
+render configuration from the global per-variant defaults in
+`src/data/variants.ts`.
 
 ## Building the website
 

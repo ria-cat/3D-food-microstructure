@@ -1,4 +1,4 @@
-import type { Sample } from "../data/samples";
+import type { Sample } from "../data/variants";
 
 function CubeIcon() {
   return (
