@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """Preprocess the raw TIFF volumes into browser-ready zstd-compressed raw volumes.
 
-Expected input layout — each image lives in its own folder under `data/raw`:
+Expected input layout — each image lives in its own folder under `data/`:
 
-    data/raw/<image>/
-        <image>-clahe.tif        # original (analog) volume
-        <image>-segmented.tif    # optional binary variant
-        <image>-skeleton.tif     # optional binary variant
+    data/<image>/
+        clahe.tif        # original (analog) volume
+        segmented.tif    # optional binary variant
+        skeleton.tif     # optional binary variant
 
-Every `.tif`/`.tiff` found is read directly from `data/raw/` and written as a
-slice-major `*.raw.zst` file under `public/volumes/`, which the browser fetches,
-decompresses with `fzstd`, and uploads straight to the GPU. There is no
-intermediate compressed-TIFF step: the zstd compression applied here is exactly
-what the browser consumes.
+Every `.tif`/`.tiff` found is read directly from `data/` and written as a
+slice-major `*.raw.zst` file under `public/volumes/<image>/`, mirroring the
+input folder name, which the browser fetches, decompresses with `fzstd`, and
+uploads straight to the GPU. There is no intermediate compressed-TIFF step: the
+zstd compression applied here is exactly what the browser consumes.
 
 Analog volumes (anything that is not a binary mask, e.g. the CLAHE original) are
 downsampled by 2x on every axis (area-averaged) to stay within the browser's
@@ -31,11 +31,16 @@ instead of hardcoding dimensions in `src/data/samples.ts`.
 
 Progress is reported through the `logging` module (INFO level).
 
+By default every volume is re-processed; pass `--skip-existing` to skip volumes
+whose `.raw.zst` output already exists, reusing their existing manifest entry.
+The `pnpm preprocess` command enables this by default.
+
 Requires `numpy`, `tifffile`, `imagecodecs`, and `joblib`.
 
 Run from anywhere; all paths are resolved relative to this script.
 """
 
+import argparse
 import json
 import logging
 import os
@@ -100,10 +105,10 @@ def is_binary(volume):
 
 
 def source_volumes():
-    """All .tif/.tiff files under data/raw, sorted for stable output.
+    """All .tif/.tiff files under data/, sorted for stable output.
 
     Only files inside per-image subfolders are considered, matching the
-    `data/raw/<image>/` layout.
+    `data/<image>/` layout.
     """
     volumes = []
     for folder in sorted(path for path in RAW_DIR.iterdir() if path.is_dir()):
@@ -137,12 +142,46 @@ def compress_chunk(chunk):
     return frame, time.perf_counter() - start
 
 
+def target_for(source):
+    """Output path for a source volume, mirroring its folder under data/."""
+    relative = source.relative_to(RAW_DIR)
+    return OUTPUT_DIR / relative.parent / f"{source.stem}.raw.zst"
+
+
+def volume_url(target):
+    """Public URL the browser uses to fetch a written volume."""
+    return f"/volumes/{target.relative_to(OUTPUT_DIR).as_posix()}"
+
+
+def load_manifest():
+    """Existing manifest entries, or an empty mapping if there is none.
+
+    Used to recover dimensions for volumes skipped because their output already
+    exists.
+    """
+    try:
+        return json.loads(MANIFEST.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except (OSError, json.JSONDecodeError) as error:
+        logger.warning(
+            "Ignoring unreadable manifest %s: %s",
+            MANIFEST.relative_to(ROOT),
+            error,
+        )
+        return {}
+
+
 def process(source):
     """Read, conditionally downsample, and compress one volume.
 
+    The output mirrors the input's folder name, so `data/<image>/<variant>.tif`
+    becomes `public/volumes/<image>/<variant>.raw.zst`.
+
     Returns the manifest entry for the written volume.
     """
-    target = OUTPUT_DIR / f"{source.stem}.raw.zst"
+    target = target_for(source)
+    target.parent.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
 
     logger.info("Reading %s", source.relative_to(ROOT))
@@ -199,14 +238,32 @@ def process(source):
         target.stat().st_size / MB,
         time.perf_counter() - started,
     )
-    return f"/volumes/{target.name}", {
+    return volume_url(target), {
         "width": int(width),
         "height": int(height),
         "depth": int(depth),
     }
 
 
+def parse_args(argv=None):
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Preprocess raw TIFF volumes into browser-ready .raw.zst files.",
+    )
+    parser.add_argument(
+        "--skip-existing",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Skip volumes whose .raw.zst output already exists, reusing their "
+            "manifest entry (default: %(default)s)."
+        ),
+    )
+    return parser.parse_args(argv)
+
+
 def main() -> None:
+    args = parse_args()
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
@@ -220,12 +277,19 @@ def main() -> None:
         raise SystemExit(f"No .tif files found under {RAW_DIR}")
     logger.info("Found %d volume(s) under %s", len(files), RAW_DIR.relative_to(ROOT))
 
+    existing = load_manifest()
     failed = False
     dimensions: dict[str, dict[str, int]] = {}
     for source in files:
+        target = target_for(source)
+        url = volume_url(target)
+        if args.skip_existing and target.exists() and url in existing:
+            dimensions[url] = existing[url]
+            logger.info("Skipping %s (already preprocessed)", target.relative_to(ROOT))
+            continue
         try:
-            url, dims = process(source)
-            dimensions[url] = dims
+            processed_url, dims = process(source)
+            dimensions[processed_url] = dims
         except Exception as error:  # noqa: BLE001 - report and continue
             failed = True
             logger.error("%s: %s", source.name, error)

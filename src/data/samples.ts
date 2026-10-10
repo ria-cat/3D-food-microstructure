@@ -39,7 +39,7 @@ export const samples: Sample[] = [
         id: "original",
         label: "Original",
         volume: {
-          url: "/volumes/wpi-0.05gg-clahe.raw.zst",
+          url: "/volumes/wpi-0.05gg/clahe.raw.zst",
           spacing: [1, 1, 1],
           render: {
             colormap: "inferno",
@@ -53,7 +53,7 @@ export const samples: Sample[] = [
         id: "segmented",
         label: "Segmented",
         volume: {
-          url: "/volumes/wpi-0.05gg-segmented.raw.zst",
+          url: "/volumes/wpi-0.05gg/segmented.raw.zst",
           spacing: [1, 1, 1],
           render: { color: "#2dd4bf" },
         },
@@ -62,7 +62,7 @@ export const samples: Sample[] = [
         id: "skeleton",
         label: "Skeleton",
         volume: {
-          url: "/volumes/wpi-0.05gg-skeleton.raw.zst",
+          url: "/volumes/wpi-0.05gg/skeleton.raw.zst",
           spacing: [1, 1, 1],
           render: { color: "#fbbf24", lighting: false },
         },

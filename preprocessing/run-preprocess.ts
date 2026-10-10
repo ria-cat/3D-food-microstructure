@@ -5,7 +5,8 @@
  *   1. Verifies that conda is available.
  *   2. Ensures the conda environment declared in environment.yml exists and
  *      matches it, creating or updating it as needed.
- *   3. Runs preprocess.py inside that environment.
+ *   3. Runs preprocess.py inside that environment, forwarding any extra CLI
+ *      arguments (e.g. `--skip-existing`).
  *
  * Works on Linux, macOS, and Windows. Run via `pnpm preprocess`. Node runs this
  * TypeScript directly (native type stripping), so there is no build step.
@@ -173,10 +174,19 @@ function main(): void {
     }
   }
 
-  // 3. Run preprocess.py inside the environment.
+  // 3. Run preprocess.py inside the environment, forwarding any extra CLI
+  // arguments (e.g. `--skip-existing`) from the npm script.
   console.log(`\u00b7 running ${basename(SCRIPT)} in conda env "${envName}"`);
   const result = conda(
-    ["run", "-n", envName, "--no-capture-output", "python", SCRIPT],
+    [
+      "run",
+      "-n",
+      envName,
+      "--no-capture-output",
+      "python",
+      SCRIPT,
+      ...process.argv.slice(2),
+    ],
     { stdio: "inherit" },
   );
   if (result.error)

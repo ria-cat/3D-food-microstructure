@@ -10,7 +10,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "preprocess": "node preprocessing/run-preprocess.ts"
+    "preprocess": "node preprocessing/run-preprocess.ts --skip-existing"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.10",

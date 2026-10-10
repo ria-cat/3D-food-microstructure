@@ -40,18 +40,18 @@ automatically when you run the pipeline, so you don't need to create it by hand.
 
 ### 2. Add the raw volumes
 
-Place each image in its own folder under `data/raw/`, named after its original
+Place each image in its own folder under `data/`, named after its original
 (CLAHE) volume. The scripts discover folders automatically:
 
 ```text
-data/raw/<image>/
-    <image>-clahe.tif        # original volume (required)
-    <image>-segmented.tif    # optional variant
-    <image>-skeleton.tif     # optional variant
+data/<image>/
+    clahe.tif        # original volume (required)
+    segmented.tif    # optional variant
+    skeleton.tif     # optional variant
 ```
 
 > Note: `*.tif` files are git-ignored, so raw and intermediate volumes are not
-> committed. Only the generated `public/volumes/*.raw.zst` files are tracked.
+> committed. Only the generated `public/volumes/**/*.raw.zst` files are tracked.
 
 ### 3. Run the pipeline
 
@@ -59,17 +59,24 @@ data/raw/<image>/
 pnpm preprocess
 ```
 
-This runs `preprocessing/run-preprocess.mjs`, which:
+This runs `preprocessing/run-preprocess.ts`, which:
 
 1. Verifies conda is available, stopping with an error if it isn't.
 2. Creates the `3D_showcase` environment from `preprocessing/environment.yml`,
    or updates it if any declared dependency is missing.
 3. Runs `preprocessing/preprocess.py` inside that environment.
 
-`preprocess.py` reads every `.tif` directly from `data/raw/` and writes a
-slice-major `*.raw.zst` file under `public/volumes/` using zstd's maximum
-compression level, then writes `manifest.json`, which maps each volume URL to
-its `{width, height, depth}`. There is no intermediate compressed-TIFF step.
+`preprocess.py` reads every `.tif` directly from `data/` and writes a
+slice-major `*.raw.zst` file under `public/volumes/<image>/`, mirroring the
+input folder name, using zstd's maximum compression level. It then writes
+`manifest.json`, which maps each volume URL to its `{width, height, depth}`.
+There is no intermediate compressed-TIFF step.
+
+Volumes whose `.raw.zst` output already exists are skipped, reusing their
+existing manifest entry. The `preprocess` npm script passes `--skip-existing`,
+so `pnpm preprocess` skips them by default; run
+`pnpm preprocess -- --no-skip-existing` to force a full re-run (e.g. after
+changing a source `.tif`).
 
 - Analog volumes (anything that is not a binary mask, e.g. the CLAHE original)
   are downsampled by 2× on every axis (area-averaged). Downsampling is required
@@ -82,7 +89,7 @@ failure.
 ### 4. Register the sample
 
 Add an entry to `src/data/samples.ts` pointing at the generated volume URLs
-(e.g. `/volumes/<image>-clahe.raw.zst`). Dimensions are read from the manifest
+(e.g. `/volumes/<image>/clahe.raw.zst`). Dimensions are read from the manifest
 at runtime, so they do not need to be hardcoded.
 
 ## Building the website
@@ -138,5 +145,5 @@ To deploy, simply commit and push to `main`:
 git push origin main
 ```
 
-Make sure the generated `public/volumes/*.raw.zst` files and `manifest.json`
+Make sure the generated `public/volumes/**/*.raw.zst` files and `manifest.json`
 are committed, since the build does not run the Python preprocessing pipeline.
