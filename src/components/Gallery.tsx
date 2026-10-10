@@ -1,8 +1,12 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import type { Sample, ThumbnailImage } from "../data/variants";
 import { loadSamples } from "../lib/volumes";
 import SampleCard from "./SampleCard";
-import FullScreenViewer from "./FullScreenViewer";
+
+// The full-screen viewer pulls in three.js, which is heavy. Load it lazily so
+// the gallery's initial JavaScript stays small and the 3D code is only fetched
+// once a sample is actually opened.
+const FullScreenViewer = lazy(() => import("./FullScreenViewer"));
 
 interface GalleryProps {
   // Optimized preview images keyed by sample id, generated in index.astro.
@@ -70,7 +74,18 @@ export default function Gallery({ thumbnails = {} }: GalleryProps) {
       )}
 
       {selected ? (
-        <FullScreenViewer sample={selected} onClose={() => setSelected(null)} />
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950">
+              <span className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-teal-400" />
+            </div>
+          }
+        >
+          <FullScreenViewer
+            sample={selected}
+            onClose={() => setSelected(null)}
+          />
+        </Suspense>
       ) : null}
     </section>
   );
