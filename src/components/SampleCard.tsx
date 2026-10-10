@@ -84,9 +84,6 @@ export default function SampleCard({
               <CubeIcon />
             </span>
           )}
-          <span className="rounded-full bg-zinc-900/80 px-3 py-1 text-xs font-semibold text-zinc-200">
-            View in 3D
-          </span>
         </div>
       </button>
 
