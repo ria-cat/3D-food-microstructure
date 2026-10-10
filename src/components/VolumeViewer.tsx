@@ -223,6 +223,20 @@ function VolumeCanvas({
     const maxDim = Math.max(sx, sy, sz);
     const box = new THREE.Vector3(sx / maxDim, sy / maxDim, sz / maxDim);
 
+    // Distance at which the volume's bounding sphere fits the viewport. The
+    // horizontal field of view shrinks with the aspect ratio, so narrow
+    // (portrait/phone) viewports need the camera further away to keep the
+    // whole volume visible.
+    const boundingRadius = box.length() / 2;
+    const halfFov = THREE.MathUtils.degToRad(camera.fov) / 2;
+    function fitDistance(aspect: number) {
+      const halfFovH = Math.atan(Math.tan(halfFov) * aspect);
+      return Math.max(
+        boundingRadius / Math.sin(halfFov),
+        boundingRadius / Math.sin(halfFovH),
+      );
+    }
+
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.target.set(0, 0, 0);
     controls.enablePan = false;
@@ -234,13 +248,25 @@ function VolumeCanvas({
     controls.update();
     disposables.push(controls);
 
+    // Fit distance for the current aspect ratio, tracked so the user's zoom
+    // level can be preserved when the viewport changes (e.g. rotating a phone).
+    let currentFit = 0;
+
     function resize() {
       const w = root.clientWidth;
       const h = root.clientHeight;
       if (w === 0 || h === 0) return;
+      const aspect = w / h;
       renderer!.setSize(w, h, false);
-      camera.aspect = w / h;
+      camera.aspect = aspect;
       camera.updateProjectionMatrix();
+
+      const nextFit = fitDistance(aspect);
+      const zoom = currentFit > 0 ? camera.position.length() / currentFit : 1;
+      currentFit = nextFit;
+      // Keep the fit distance reachable even on very narrow viewports.
+      controls.maxDistance = Math.max(6, nextFit);
+      camera.position.setLength(nextFit * zoom);
     }
     resize();
     resizeObserver = new ResizeObserver(resize);
