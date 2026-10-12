@@ -1,14 +1,25 @@
 import { decompress } from "fzstd";
+import { buildOccupancy, OCCUPANCY_RESOLUTION } from "./occupancy";
 
 // Worker protocol: the main thread hands over one compressed volume at a time
-// and receives the decoded bytes back (transferred, not copied).
+// and receives the decoded bytes back (transferred, not copied), together with
+// a coarse occupancy grid used for empty-space skipping in the ray marcher.
 export interface DecodeRequest {
   id: number;
   buffer: ArrayBuffer;
+  width: number;
+  height: number;
+  depth: number;
 }
 
 export type DecodeResponse =
-  | { id: number; buffer: ArrayBuffer; byteOffset: number; byteLength: number }
+  | {
+      id: number;
+      buffer: ArrayBuffer;
+      byteOffset: number;
+      byteLength: number;
+      occupancy: ArrayBuffer;
+    }
   | { id: number; error: string };
 
 // Minimal typing for the dedicated worker scope. The project's tsconfig uses the
@@ -20,19 +31,27 @@ const workerScope = self as unknown as {
 };
 
 workerScope.onmessage = ({ data }) => {
-  const { id, buffer } = data;
+  const { id, buffer, width, height, depth } = data;
   try {
     const decoded = decompress(new Uint8Array(buffer));
-    // Hand the decoded bytes back by transferring the underlying buffer so the
-    // result is never copied on the way out.
+    const occupancy = buildOccupancy(
+      decoded,
+      width,
+      height,
+      depth,
+      OCCUPANCY_RESOLUTION,
+    );
+    // Hand the decoded bytes and the occupancy grid back by transferring their
+    // underlying buffers so neither is copied on the way out.
     workerScope.postMessage(
       {
         id,
         buffer: decoded.buffer as ArrayBuffer,
         byteOffset: decoded.byteOffset,
         byteLength: decoded.byteLength,
+        occupancy: occupancy.buffer as ArrayBuffer,
       },
-      [decoded.buffer as ArrayBuffer],
+      [decoded.buffer as ArrayBuffer, occupancy.buffer as ArrayBuffer],
     );
   } catch (error) {
     workerScope.postMessage({

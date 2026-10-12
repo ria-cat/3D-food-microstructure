@@ -169,6 +169,7 @@ export default function FullScreenViewer({
           clim={volume.render?.clim}
           magFilter={volume.render?.magFilter}
           lighting={volume.render?.lighting}
+          antialias={volume.render?.antialias}
         />
       </div>
     </div>

@@ -1,7 +1,14 @@
 import type { DecodeRequest, DecodeResponse } from "./zstd.worker";
 
+// A decoded volume: the raw voxel bytes plus the coarse occupancy grid used for
+// empty-space skipping.
+export interface DecodedVolume {
+  data: Uint8Array;
+  occupancy: Uint8Array;
+}
+
 interface PendingDecode {
-  resolve: (value: Uint8Array) => void;
+  resolve: (value: DecodedVolume) => void;
   reject: (reason: Error) => void;
 }
 
@@ -26,9 +33,14 @@ function getWorker(): Worker {
     if ("error" in message) {
       entry.reject(new Error(message.error));
     } else {
-      entry.resolve(
-        new Uint8Array(message.buffer, message.byteOffset, message.byteLength),
-      );
+      entry.resolve({
+        data: new Uint8Array(
+          message.buffer,
+          message.byteOffset,
+          message.byteLength,
+        ),
+        occupancy: new Uint8Array(message.occupancy),
+      });
     }
   });
 
@@ -48,17 +60,26 @@ function getWorker(): Worker {
   return created;
 }
 
-// Decompress zstd data off the main thread. The input is copied before being
-// handed to the worker, so the caller's buffer (e.g. a cached compressed
-// volume) stays intact for reuse.
-export function decodeZstd(compressed: Uint8Array): Promise<Uint8Array> {
+// Decompress zstd data off the main thread and build its occupancy grid. The
+// input is copied before being handed to the worker, so the caller's buffer
+// (e.g. a cached compressed volume) stays intact for reuse.
+export function decodeZstd(
+  compressed: Uint8Array,
+  dimensions: { width: number; height: number; depth: number },
+): Promise<DecodedVolume> {
   const active = getWorker();
   const id = nextRequestId++;
   const copy = compressed.slice();
 
-  return new Promise<Uint8Array>((resolve, reject) => {
+  return new Promise<DecodedVolume>((resolve, reject) => {
     pending.set(id, { resolve, reject });
-    const request: DecodeRequest = { id, buffer: copy.buffer as ArrayBuffer };
+    const request: DecodeRequest = {
+      id,
+      buffer: copy.buffer as ArrayBuffer,
+      width: dimensions.width,
+      height: dimensions.height,
+      depth: dimensions.depth,
+    };
     active.postMessage(request, [copy.buffer as ArrayBuffer]);
   });
 }

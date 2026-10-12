@@ -1,5 +1,6 @@
 import { resolvePublicUrl } from "./assets";
-import { decodeZstd } from "./zstd";
+import { decodeZstd, type DecodedVolume } from "./zstd";
+import { buildOccupancy, OCCUPANCY_RESOLUTION } from "./occupancy";
 import {
   DEFAULT_SPACING,
   orderVariants,
@@ -180,24 +181,42 @@ function loadCompressed(url: string): Promise<Uint8Array> {
 // In-flight decodes, keyed by url. Decoded data is not cached, but concurrent
 // requests for the same variant still share a single decode so the worker is
 // never asked to decompress the same volume twice at once.
-const decodeRequests = new Map<string, Promise<Uint8Array>>();
+const decodeRequests = new Map<string, Promise<DecodedVolume>>();
 
 async function decodeVolume(
   url: string,
   dimensions: VolumeDimensions,
-): Promise<Uint8Array> {
+): Promise<DecodedVolume> {
   const compressed = await loadCompressed(url);
-  const decoded = url.endsWith(".zst")
-    ? await decodeZstd(compressed)
-    : compressed;
+  const { width, height, depth } = dimensions;
+  const expected = width * height * depth;
 
-  const expected = dimensions.width * dimensions.height * dimensions.depth;
-  if (decoded.length !== expected) {
+  if (url.endsWith(".zst")) {
+    const decoded = await decodeZstd(compressed, dimensions);
+    if (decoded.data.length !== expected) {
+      throw new Error(
+        `Unexpected volume size: got ${decoded.data.length} bytes, expected ${expected}.`,
+      );
+    }
+    return decoded;
+  }
+
+  // Non-compressed fallback: build the occupancy grid on the main thread.
+  if (compressed.length !== expected) {
     throw new Error(
-      `Unexpected volume size: got ${decoded.length} bytes, expected ${expected}.`,
+      `Unexpected volume size: got ${compressed.length} bytes, expected ${expected}.`,
     );
   }
-  return decoded;
+  return {
+    data: compressed,
+    occupancy: buildOccupancy(
+      compressed,
+      width,
+      height,
+      depth,
+      OCCUPANCY_RESOLUTION,
+    ),
+  };
 }
 
 // Load and decode a volume's voxel data. Decoding runs in a worker (off the main
@@ -206,7 +225,7 @@ async function decodeVolume(
 export function loadVolumeData(
   url: string,
   dimensions: VolumeDimensions,
-): Promise<Uint8Array> {
+): Promise<DecodedVolume> {
   const inFlight = decodeRequests.get(url);
   if (inFlight) return inFlight;
 

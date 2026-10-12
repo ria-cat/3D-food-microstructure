@@ -8,6 +8,7 @@ export interface VolumeRenderOptions {
   clim?: [number, number];
   magFilter?: "linear" | "nearest";
   lighting?: boolean;
+  antialias?: boolean;
 }
 
 export interface VolumeData {
@@ -67,7 +68,7 @@ export const VARIANT_DEFAULTS: Record<string, VariantDefaults> = {
   },
   skeleton: {
     label: "Skeleton",
-    render: { color: "#fbbf24", lighting: false },
+    render: { color: "#fbbf24", lighting: false, antialias: false },
   },
 };
 

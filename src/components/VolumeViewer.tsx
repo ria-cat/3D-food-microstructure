@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
+import { WebGPURenderer } from "three/webgpu";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import {
   colormapLut,
@@ -12,6 +13,11 @@ import {
   loadVolumeDimensions,
   type VolumeDimensions,
 } from "../lib/volumes";
+import { OCCUPANCY_RESOLUTION } from "../lib/occupancy";
+import {
+  createVolumeMaterial,
+  type VolumeShaderUniforms,
+} from "../lib/volumeMaterial";
 
 interface VolumeViewerProps {
   url: string;
@@ -23,140 +29,14 @@ interface VolumeViewerProps {
   clim?: [number, number];
   magFilter?: "linear" | "nearest";
   lighting?: boolean;
+  antialias?: boolean;
 }
 
 // The canvas needs concrete dimensions, which are resolved from the manifest
 // before it is mounted.
 interface VolumeCanvasProps extends VolumeViewerProps, VolumeDimensions {}
 
-const VERTEX_SHADER = /* glsl */ `
-	varying vec3 vPos;
-
-	void main() {
-		vPos = position;
-		gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-	}
-`;
-
-const FRAGMENT_SHADER = /* glsl */ `
-	precision highp float;
-	precision highp int;
-	precision highp sampler3D;
-
-	layout(location = 0) out highp vec4 fragColor;
-
-	varying vec3 vPos;
-
-	uniform sampler3D uVolume;
-	uniform sampler2D uColorMap;
-	uniform vec3 uCamPos;
-	uniform vec3 uBoxMin;
-	uniform vec3 uBoxMax;
-	uniform float uStepSize;
-	uniform vec2 uClim;
-	uniform float uAlpha;
-	uniform float uGamma;
-	uniform vec3 uLightDir;
-	uniform vec3 uVoxelSize;
-	uniform float uUseLighting;
-
-	// Ray / axis-aligned box intersection (slab method). Returns (tNear, tFar).
-	vec2 intersectBox(vec3 ro, vec3 rd, vec3 boxMin, vec3 boxMax) {
-		vec3 invDir = 1.0 / rd;
-		vec3 t0 = (boxMin - ro) * invDir;
-		vec3 t1 = (boxMax - ro) * invDir;
-		vec3 tmin = min(t0, t1);
-		vec3 tmax = max(t0, t1);
-		float tNear = max(max(tmin.x, tmin.y), tmin.z);
-		float tFar = min(min(tmax.x, tmax.y), tmax.z);
-		return vec2(tNear, tFar);
-	}
-
-	float sampleVolume(vec3 uvw) {
-		return texture(uVolume, uvw).r;
-	}
-
-	void main() {
-		vec3 ro = uCamPos;
-		vec3 rd = normalize(vPos - ro);
-
-		vec2 tb = intersectBox(ro, rd, uBoxMin, uBoxMax);
-		float t = max(tb.x, 0.0);
-		float tFar = tb.y;
-
-		if (t >= tFar) {
-			discard;
-		}
-
-		vec3 boxSize = uBoxMax - uBoxMin;
-		vec3 accum = vec3(0.0);
-		float transmittance = 1.0;
-
-		const int MAX_STEPS = 2048;
-		for (int i = 0; i < MAX_STEPS; i++) {
-			if (t > tFar) {
-				break;
-			}
-
-			vec3 p = ro + rd * t;
-			vec3 uvw = (p - uBoxMin) / boxSize;
-
-			float intensity = sampleVolume(uvw);
-			float v = clamp((intensity - uClim.x) / (uClim.y - uClim.x), 0.0, 1.0);
-			float alpha = pow(v, uGamma) * uAlpha;
-
-			if (alpha > 0.001) {
-				vec3 baseColor = texture(uColorMap, vec2(v, 0.5)).rgb;
-				vec3 color = baseColor;
-
-				if (uUseLighting > 0.5) {
-					// Surface normal from the intensity gradient (central differences).
-					vec3 grad;
-					grad.x = sampleVolume(uvw - vec3(uVoxelSize.x, 0.0, 0.0)) - sampleVolume(uvw + vec3(uVoxelSize.x, 0.0, 0.0));
-					grad.y = sampleVolume(uvw - vec3(0.0, uVoxelSize.y, 0.0)) - sampleVolume(uvw + vec3(0.0, uVoxelSize.y, 0.0));
-					grad.z = sampleVolume(uvw - vec3(0.0, 0.0, uVoxelSize.z)) - sampleVolume(uvw + vec3(0.0, 0.0, uVoxelSize.z));
-					vec3 normal = vec3(0.0);
-					float gradLen = length(grad);
-					if (gradLen > 0.0001) {
-						normal = grad / gradLen;
-					}
-
-					float diffuse = max(dot(normal, uLightDir), 0.0);
-					float shading = 0.35 + 0.65 * diffuse;
-					color = baseColor * shading;
-				}
-
-				accum += transmittance * alpha * color;
-				transmittance *= (1.0 - alpha);
-				if (transmittance < 0.02) {
-					break;
-				}
-			}
-
-			t += uStepSize;
-		}
-
-		float opacity = 1.0 - transmittance;
-		vec3 color = accum / max(opacity, 0.0001);
-		fragColor = vec4(color, opacity);
-	}
-`;
-
-interface Uniforms {
-  [key: string]: { value: any };
-  uVolume: { value: THREE.Data3DTexture | null };
-  uColorMap: { value: THREE.DataTexture | null };
-  uCamPos: { value: THREE.Vector3 };
-  uBoxMin: { value: THREE.Vector3 };
-  uBoxMax: { value: THREE.Vector3 };
-  uStepSize: { value: number };
-  uClim: { value: THREE.Vector2 };
-  uAlpha: { value: number };
-  uGamma: { value: number };
-  uLightDir: { value: THREE.Vector3 };
-  uVoxelSize: { value: THREE.Vector3 };
-  uUseLighting: { value: number };
-}
+type Uniforms = VolumeShaderUniforms;
 
 function VolumeCanvas({
   url,
@@ -171,14 +51,19 @@ function VolumeCanvas({
   clim = [0, 1],
   magFilter = "nearest",
   lighting = true,
+  antialias = true,
 }: VolumeCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const uniformsRef = useRef<Uniforms | null>(null);
+  const materialBindingsRef = useRef<ReturnType<
+    typeof createVolumeMaterial
+  > | null>(null);
   // The colormap texture lives in a ref so it survives the main effect
-  // recreating the uniforms (which happens whenever the volume or its render
-  // options change). Without this, that re-run would reset `uColorMap` to null
-  // and the volume would render black until the colormap was changed.
+  // recreating the material when volume options change.
   const colormapTextureRef = useRef<THREE.DataTexture | null>(null);
+  // Lets effects outside the main render effect (e.g. the colormap swap) ask
+  // for a redraw once the renderer is set up.
+  const renderRequestRef = useRef<() => void>(() => {});
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
     "loading",
   );
@@ -195,19 +80,32 @@ function VolumeCanvas({
 
     let cancelled = false;
     let animationId = 0;
-    let renderer: THREE.WebGLRenderer | null = null;
+    let renderer: WebGPURenderer | null = null;
     let resizeObserver: ResizeObserver | null = null;
     const disposables: { dispose: () => void }[] = [];
 
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      // TSL node materials are rendered by WebGPURenderer. Force its WebGL
+      // backend to retain the viewer's existing WebGL2 requirement.
+      renderer = new WebGPURenderer({
+        antialias,
+        alpha: true,
+        forceWebGL: true,
+      });
     } catch {
       setStatus("error");
       setError("WebGL2 is not supported on this device.");
       return;
     }
 
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // Full-quality pixel ratio, capped so HiDPI phones don't render 3x the
+    // pixels. While the camera is moving we drop to `interactivePixelRatio` and
+    // restore this once it settles (see `animate`), which keeps orbiting smooth
+    // on devices that can't ray-march the volume at full resolution in real time.
+    const maxPixelRatio = Math.min(window.devicePixelRatio, 2);
+    const interactivePixelRatio = Math.min(maxPixelRatio, 1);
+    let pixelRatio = maxPixelRatio;
+    renderer.setPixelRatio(pixelRatio);
     renderer.setClearColor(0x000000, 0);
     // The backing store is sized with the device pixel ratio in `resize()`,
     // which is called with `updateStyle: false` so it leaves the CSS size
@@ -261,6 +159,11 @@ function VolumeCanvas({
     // level can be preserved when the viewport changes (e.g. rotating a phone).
     let currentFit = 0;
 
+    // Render-on-demand state. A full-resolution ray march is expensive, so the
+    // viewer only redraws when something actually changes; an idle canvas must
+    // not keep the GPU busy (which also heats the device and throttles it).
+    let needsRender = true;
+
     function resize() {
       const w = root.clientWidth;
       const h = root.clientHeight;
@@ -276,14 +179,47 @@ function VolumeCanvas({
       // Keep the fit distance reachable even on very narrow viewports.
       controls.maxDistance = Math.max(6, nextFit);
       camera.position.setLength(nextFit * zoom);
+      needsRender = true;
     }
     resize();
     resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(root);
 
+    const placeholderVolume = new THREE.Data3DTexture(
+      new Uint8Array([0]),
+      1,
+      1,
+      1,
+    );
+    placeholderVolume.format = THREE.RedFormat;
+    placeholderVolume.type = THREE.UnsignedByteType;
+    placeholderVolume.needsUpdate = true;
+    disposables.push(placeholderVolume);
+
+    const placeholderOccupancy = new THREE.Data3DTexture(
+      new Uint8Array([255]),
+      1,
+      1,
+      1,
+    );
+    placeholderOccupancy.format = THREE.RedFormat;
+    placeholderOccupancy.type = THREE.UnsignedByteType;
+    placeholderOccupancy.needsUpdate = true;
+    disposables.push(placeholderOccupancy);
+
+    const placeholderColorMap = new THREE.DataTexture(
+      new Uint8Array([0, 0, 0, 255]),
+      1,
+      1,
+      THREE.RGBAFormat,
+    );
+    placeholderColorMap.colorSpace = THREE.SRGBColorSpace;
+    placeholderColorMap.needsUpdate = true;
+    disposables.push(placeholderColorMap);
+
     const uniforms: Uniforms = {
-      uVolume: { value: null },
-      uColorMap: { value: colormapTextureRef.current },
+      uVolume: { value: placeholderVolume },
+      uColorMap: { value: colormapTextureRef.current ?? placeholderColorMap },
       uCamPos: { value: new THREE.Vector3() },
       uBoxMin: { value: box.clone().multiplyScalar(-0.5) },
       uBoxMax: { value: box.clone().multiplyScalar(0.5) },
@@ -298,19 +234,28 @@ function VolumeCanvas({
         value: new THREE.Vector3(1 / width, 1 / height, 1 / depth),
       },
       uUseLighting: { value: lighting ? 1 : 0 },
+      uOccupancy: { value: placeholderOccupancy },
+      uOccRes: {
+        value: new THREE.Vector3(
+          OCCUPANCY_RESOLUTION,
+          OCCUPANCY_RESOLUTION,
+          OCCUPANCY_RESOLUTION,
+        ),
+      },
+      uOccStep: {
+        value: Math.min(
+          box.x / OCCUPANCY_RESOLUTION,
+          box.y / OCCUPANCY_RESOLUTION,
+          box.z / OCCUPANCY_RESOLUTION,
+        ),
+      },
+      uUseOccupancy: { value: 0 },
     };
     uniformsRef.current = uniforms;
 
-    const material = new THREE.ShaderMaterial({
-      glslVersion: THREE.GLSL3,
-      uniforms,
-      vertexShader: VERTEX_SHADER,
-      fragmentShader: FRAGMENT_SHADER,
-      transparent: true,
-      depthWrite: false,
-      // Back faces so raycasting still works when the camera enters the volume.
-      side: THREE.BackSide,
-    });
+    const materialBindings = createVolumeMaterial(uniforms);
+    materialBindingsRef.current = materialBindings;
+    const material = materialBindings.material;
     disposables.push(material);
 
     const geometry = new THREE.BoxGeometry(box.x, box.y, box.z);
@@ -319,17 +264,102 @@ function VolumeCanvas({
     mesh.visible = false;
     scene.add(mesh);
 
+    function applyPixelRatio(next: number) {
+      if (next === pixelRatio) return;
+      pixelRatio = next;
+      renderer!.setPixelRatio(next);
+      const w = root.clientWidth;
+      const h = root.clientHeight;
+      if (w > 0 && h > 0) renderer!.setSize(w, h, false);
+    }
+
+    function requestRender() {
+      needsRender = true;
+    }
+    renderRequestRef.current = requestRender;
+
+    void renderer
+      .init()
+      .then(() => {
+        if (!cancelled) requestRender();
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setStatus("error");
+          setError(
+            err instanceof Error ? err.message : "Failed to initialize WebGL2.",
+          );
+        }
+      });
+
+    function draw() {
+      if (!renderer?.initialized) return;
+      uniforms.uCamPos.value.copy(camera.position);
+      renderer.render(scene, camera);
+    }
+
+    // The camera is "busy" while the user is interacting (`start` / `end`) or
+    // while damping is still settling (`update()` returning true). While busy we
+    // render at the reduced interactive resolution; once it stops we restore
+    // full quality and draw the final frame.
+    let interacting = false;
+    let moving = false;
+
+    function updateResolution() {
+      applyPixelRatio(
+        interacting || moving ? interactivePixelRatio : maxPixelRatio,
+      );
+    }
+
+    // OrbitControls applies wheel/pinch zoom synchronously inside its own event
+    // handlers (calling `update()` itself), so the rAF loop's `update()` can
+    // return `false` even though the camera just moved. The `change` event is
+    // the reliable "camera moved" signal, so redraw on it.
+    controls.addEventListener("start", () => {
+      interacting = true;
+      updateResolution();
+    });
+    controls.addEventListener("end", () => {
+      interacting = false;
+      updateResolution();
+      requestRender();
+    });
+    controls.addEventListener("change", requestRender);
+
     function animate() {
       animationId = requestAnimationFrame(animate);
-      controls.update();
-      uniforms.uCamPos.value.copy(camera.position);
-      renderer!.render(scene, camera);
+      const changed = controls.update();
+
+      if (changed) {
+        moving = true;
+        updateResolution();
+        needsRender = false;
+        draw();
+        return;
+      }
+
+      if (moving) {
+        moving = false;
+        updateResolution();
+        needsRender = false;
+        draw();
+        return;
+      }
+
+      if (needsRender) {
+        needsRender = false;
+        draw();
+      }
     }
     animate();
 
     (async () => {
       try {
-        const data = await loadVolumeData(url, { width, height, depth });
+        const { data, occupancy } = await loadVolumeData(url, {
+          width,
+          height,
+          depth,
+        });
         if (cancelled) return;
 
         const texture = new THREE.Data3DTexture(data, width, height, depth);
@@ -348,8 +378,35 @@ function VolumeCanvas({
         texture.needsUpdate = true;
         disposables.push(texture);
 
-        uniforms.uVolume.value = texture;
+        // Upload the occupancy grid and enable empty-space skipping only when it
+        // can actually help: a grid with no empty cells (a dense volume) would
+        // otherwise just add a texture fetch per step for no benefit.
+        const occTexture = new THREE.Data3DTexture(
+          occupancy,
+          OCCUPANCY_RESOLUTION,
+          OCCUPANCY_RESOLUTION,
+          OCCUPANCY_RESOLUTION,
+        );
+        occTexture.format = THREE.RedFormat;
+        occTexture.type = THREE.UnsignedByteType;
+        occTexture.minFilter = THREE.NearestFilter;
+        occTexture.magFilter = THREE.NearestFilter;
+        occTexture.wrapS = THREE.ClampToEdgeWrapping;
+        occTexture.wrapT = THREE.ClampToEdgeWrapping;
+        occTexture.wrapR = THREE.ClampToEdgeWrapping;
+        occTexture.unpackAlignment = 1;
+        occTexture.generateMipmaps = false;
+        occTexture.needsUpdate = true;
+        disposables.push(occTexture);
+
+        materialBindings.setOccupancyTexture(occTexture);
+        materialBindings.setOccupancyEnabled(
+          occupancy.some((v) => v === 0) ? 1 : 0,
+        );
+
+        materialBindings.setVolumeTexture(texture);
         mesh.visible = true;
+        requestRender();
 
         if (!cancelled) setStatus("ready");
       } catch (err) {
@@ -365,8 +422,11 @@ function VolumeCanvas({
     return () => {
       cancelled = true;
       cancelAnimationFrame(animationId);
+      renderRequestRef.current = () => {};
       resizeObserver?.disconnect();
       for (const d of disposables) d.dispose();
+      materialBindingsRef.current = null;
+      uniformsRef.current = null;
       controls.dispose();
       scene.remove(mesh);
       renderer!.domElement.remove();
@@ -386,6 +446,7 @@ function VolumeCanvas({
     clim[1],
     magFilter,
     lighting,
+    antialias,
   ]);
 
   // Swap the colormap lookup table without reloading the volume.
@@ -396,6 +457,7 @@ function VolumeCanvas({
         : colorToLut(color);
 
     const texture = new THREE.DataTexture(lut, 256, 1, THREE.RGBAFormat);
+    texture.colorSpace = THREE.SRGBColorSpace;
     texture.type = THREE.UnsignedByteType;
     texture.minFilter = THREE.LinearFilter;
     texture.magFilter = THREE.LinearFilter;
@@ -406,17 +468,16 @@ function VolumeCanvas({
     texture.needsUpdate = true;
 
     colormapTextureRef.current = texture;
+    materialBindingsRef.current?.setColorMapTexture(texture);
     const uniforms = uniformsRef.current;
     if (uniforms) uniforms.uColorMap.value = texture;
+    // The render loop is on-demand, so ask for a redraw with the new LUT.
+    renderRequestRef.current();
 
     return () => {
       texture.dispose();
       if (colormapTextureRef.current === texture) {
         colormapTextureRef.current = null;
-      }
-      const current = uniformsRef.current;
-      if (current && current.uColorMap.value === texture) {
-        current.uColorMap.value = null;
       }
     };
   }, [colormap, color]);
