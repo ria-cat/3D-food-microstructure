@@ -61,9 +61,6 @@ function VolumeCanvas({
   // The colormap texture lives in a ref so it survives the main effect
   // recreating the material when volume options change.
   const colormapTextureRef = useRef<THREE.DataTexture | null>(null);
-  // Lets effects outside the main render effect (e.g. the colormap swap) ask
-  // for a redraw once the renderer is set up.
-  const renderRequestRef = useRef<() => void>(() => {});
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
     "loading",
   );
@@ -98,14 +95,8 @@ function VolumeCanvas({
       return;
     }
 
-    // Full-quality pixel ratio, capped so HiDPI phones don't render 3x the
-    // pixels. While the camera is moving we drop to `interactivePixelRatio` and
-    // restore this once it settles (see `animate`), which keeps orbiting smooth
-    // on devices that can't ray-march the volume at full resolution in real time.
-    const maxPixelRatio = Math.min(window.devicePixelRatio, 2);
-    const interactivePixelRatio = Math.min(maxPixelRatio, 1);
-    let pixelRatio = maxPixelRatio;
-    renderer.setPixelRatio(pixelRatio);
+    // Cap the pixel ratio so HiDPI phones don't render 3x the pixels.
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(0x000000, 0);
     // The backing store is sized with the device pixel ratio in `resize()`,
     // which is called with `updateStyle: false` so it leaves the CSS size
@@ -159,11 +150,6 @@ function VolumeCanvas({
     // level can be preserved when the viewport changes (e.g. rotating a phone).
     let currentFit = 0;
 
-    // Render-on-demand state. A full-resolution ray march is expensive, so the
-    // viewer only redraws when something actually changes; an idle canvas must
-    // not keep the GPU busy (which also heats the device and throttles it).
-    let needsRender = true;
-
     function resize() {
       const w = root.clientWidth;
       const h = root.clientHeight;
@@ -179,7 +165,6 @@ function VolumeCanvas({
       // Keep the fit distance reachable even on very narrow viewports.
       controls.maxDistance = Math.max(6, nextFit);
       camera.position.setLength(nextFit * zoom);
-      needsRender = true;
     }
     resize();
     resizeObserver = new ResizeObserver(resize);
@@ -264,36 +249,14 @@ function VolumeCanvas({
     mesh.visible = false;
     scene.add(mesh);
 
-    function applyPixelRatio(next: number) {
-      if (next === pixelRatio) return;
-      pixelRatio = next;
-      renderer!.setPixelRatio(next);
-      const w = root.clientWidth;
-      const h = root.clientHeight;
-      if (w > 0 && h > 0) renderer!.setSize(w, h, false);
-      // setPixelRatio resizes the canvas backing store and clears its contents.
-      // A tap can change resolution without moving the camera, so force a frame.
-      needsRender = true;
-    }
-
-    function requestRender() {
-      needsRender = true;
-    }
-    renderRequestRef.current = requestRender;
-
-    void renderer
-      .init()
-      .then(() => {
-        if (!cancelled) requestRender();
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setStatus("error");
-          setError(
-            err instanceof Error ? err.message : "Failed to initialize WebGL2.",
-          );
-        }
-      });
+    void renderer.init().catch((err: unknown) => {
+      if (!cancelled) {
+        setStatus("error");
+        setError(
+          err instanceof Error ? err.message : "Failed to initialize WebGL2.",
+        );
+      }
+    });
 
     function draw() {
       if (!renderer?.initialized) return;
@@ -301,58 +264,10 @@ function VolumeCanvas({
       renderer.render(scene, camera);
     }
 
-    // The camera is "busy" while the user is interacting (`start` / `end`) or
-    // while damping is still settling (`update()` returning true). While busy we
-    // render at the reduced interactive resolution; once it stops we restore
-    // full quality and draw the final frame.
-    let interacting = false;
-    let moving = false;
-
-    function updateResolution() {
-      applyPixelRatio(
-        interacting || moving ? interactivePixelRatio : maxPixelRatio,
-      );
-    }
-
-    // OrbitControls applies wheel/pinch zoom synchronously inside its own event
-    // handlers (calling `update()` itself), so the rAF loop's `update()` can
-    // return `false` even though the camera just moved. The `change` event is
-    // the reliable "camera moved" signal, so redraw on it.
-    controls.addEventListener("start", () => {
-      interacting = true;
-      updateResolution();
-    });
-    controls.addEventListener("end", () => {
-      interacting = false;
-      updateResolution();
-      requestRender();
-    });
-    controls.addEventListener("change", requestRender);
-
     function animate() {
       animationId = requestAnimationFrame(animate);
-      const changed = controls.update();
-
-      if (changed) {
-        moving = true;
-        updateResolution();
-        needsRender = false;
-        draw();
-        return;
-      }
-
-      if (moving) {
-        moving = false;
-        updateResolution();
-        needsRender = false;
-        draw();
-        return;
-      }
-
-      if (needsRender) {
-        needsRender = false;
-        draw();
-      }
+      controls.update();
+      draw();
     }
     animate();
 
@@ -409,7 +324,6 @@ function VolumeCanvas({
 
         materialBindings.setVolumeTexture(texture);
         mesh.visible = true;
-        requestRender();
 
         if (!cancelled) setStatus("ready");
       } catch (err) {
@@ -425,7 +339,6 @@ function VolumeCanvas({
     return () => {
       cancelled = true;
       cancelAnimationFrame(animationId);
-      renderRequestRef.current = () => {};
       resizeObserver?.disconnect();
       for (const d of disposables) d.dispose();
       materialBindingsRef.current = null;
@@ -474,8 +387,6 @@ function VolumeCanvas({
     materialBindingsRef.current?.setColorMapTexture(texture);
     const uniforms = uniformsRef.current;
     if (uniforms) uniforms.uColorMap.value = texture;
-    // The render loop is on-demand, so ask for a redraw with the new LUT.
-    renderRequestRef.current();
 
     return () => {
       texture.dispose();
