@@ -5,7 +5,7 @@ import ColormapSelector, { type ColorSelection } from "./ColormapSelector";
 import {
   loadVolumeData,
   loadVolumeDimensions,
-  prefetchVolumeData,
+  prefetchVolume,
 } from "../lib/volumes";
 
 function CloseIcon() {
@@ -63,11 +63,12 @@ export default function FullScreenViewer({
     };
   }, [onClose]);
 
-  // Prefetch the non-default variants as soon as the default (raw) volume has
-  // been downloaded. The default is always fetched on its own; the remaining
-  // variants are then fetched in parallel. The loader dedupes in-flight
-  // requests, so switching to a variant mid-download just awaits the prefetch
-  // instead of starting a second fetch.
+  // Warm the non-default variants as soon as the default (raw) volume is
+  // showing. Only their compressed bytes are downloaded here; decompression is
+  // deferred until a variant is actually displayed, so prefetching never
+  // competes with the renderer for main-thread time. The loader dedupes
+  // in-flight downloads, so opening a variant mid-prefetch just awaits the
+  // existing request.
   useEffect(() => {
     let cancelled = false;
     const [defaultVariant, ...otherVariants] = sample.variants;
@@ -79,10 +80,7 @@ export default function FullScreenViewer({
       .then(() => {
         if (cancelled) return;
         for (const variant of otherVariants) {
-          const { url } = variant.volume;
-          loadVolumeDimensions(url)
-            .then((dimensions) => prefetchVolumeData(url, dimensions))
-            .catch(() => {});
+          prefetchVolume(variant.volume.url);
         }
       })
       .catch(() => {

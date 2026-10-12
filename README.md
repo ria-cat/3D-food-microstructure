@@ -10,6 +10,12 @@ volumes without any server-side rendering. Each sample exposes multiple
 variants (raw, segmented, skeleton) that can be explored in a full-screen
 viewer.
 
+Decompression runs in a Web Worker, so it never blocks the renderer, and only
+the compressed volumes are cached (under an LRU byte budget) — decoded voxel
+data is never retained. Background prefetching therefore only downloads a
+variant's compressed bytes; a variant is decompressed on demand when it is
+actually displayed.
+
 ## Data flow
 
 ```mermaid

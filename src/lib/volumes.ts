@@ -1,5 +1,5 @@
-import { decompress } from "fzstd";
 import { resolvePublicUrl } from "./assets";
+import { decodeZstd } from "./zstd";
 import {
   DEFAULT_SPACING,
   orderVariants,
@@ -100,28 +100,96 @@ export async function loadVolumeDimensions(
   throw new Error(`No dimensions found for volume "${url}".`);
 }
 
-// Decoded voxel data, keyed by public URL. Cached so switching variants (or
-// reopening a sample) never re-downloads and re-decompresses a .raw.zst file.
-const volumeDataCache = new Map<string, Uint8Array>();
+// ---------------------------------------------------------------------------
+// Compressed volume cache
+//
+// Only the compressed `.raw.zst` bytes are cached. Decompressed voxel data is
+// deliberately never retained: a decoded volume can be hundreds of megabytes,
+// which would blow past a phone's memory budget within a single sample. Evicting
+// a variant here therefore only ever costs a re-download and re-decode on next
+// display; the rendered texture keeps its own copy of the voxels, so nothing on
+// screen depends on these bytes.
+// ---------------------------------------------------------------------------
 
-// In-flight volume requests, keyed by public URL. Sharing the promise means a
-// variant that is already being prefetched is never fetched twice: a viewer
-// that switches to it simply awaits the existing request.
-const volumeDataRequests = new Map<string, Promise<Uint8Array>>();
+// Total compressed bytes to keep resident. This comfortably fits one sample's
+// variants (so reopening the same sample stays instant) while evicting the
+// least-recently-used entries once another sample is opened.
+const COMPRESSED_CACHE_BUDGET = 128 * 1024 * 1024;
 
-async function fetchVolumeData(
-  url: string,
-  dimensions: VolumeDimensions,
-): Promise<Uint8Array> {
+const compressedCache = new Map<string, Uint8Array>();
+let compressedCacheBytes = 0;
+
+function readCompressedCache(url: string): Uint8Array | undefined {
+  const cached = compressedCache.get(url);
+  if (!cached) return undefined;
+  // Refresh recency by re-inserting: Map iteration order doubles as LRU order.
+  compressedCache.delete(url);
+  compressedCache.set(url, cached);
+  return cached;
+}
+
+function writeCompressedCache(url: string, data: Uint8Array): void {
+  const existing = compressedCache.get(url);
+  if (existing) {
+    compressedCacheBytes -= existing.byteLength;
+    compressedCache.delete(url);
+  }
+  compressedCache.set(url, data);
+  compressedCacheBytes += data.byteLength;
+
+  // Evict least-recently-used entries (oldest first) until the budget fits. The
+  // entry just stored is skipped, so a single variant larger than the whole
+  // budget is still cached rather than discarded the moment it arrives.
+  for (const [key, value] of compressedCache) {
+    if (compressedCacheBytes <= COMPRESSED_CACHE_BUDGET) break;
+    if (key === url) continue;
+    compressedCache.delete(key);
+    compressedCacheBytes -= value.byteLength;
+  }
+}
+
+// In-flight downloads, keyed by url, so a prefetch and a viewer request for the
+// same volume share a single network request.
+const compressedRequests = new Map<string, Promise<Uint8Array>>();
+
+async function fetchCompressed(url: string): Promise<Uint8Array> {
   const response = await fetch(resolvePublicUrl(url));
   if (!response.ok) {
     throw new Error(`Failed to load volume (HTTP ${response.status}).`);
   }
   const buffer = await response.arrayBuffer();
-  let decoded: Uint8Array = new Uint8Array(buffer);
-  if (url.endsWith(".zst")) {
-    decoded = decompress(decoded);
-  }
+  const data = new Uint8Array(buffer);
+  writeCompressedCache(url, data);
+  return data;
+}
+
+function loadCompressed(url: string): Promise<Uint8Array> {
+  const cached = readCompressedCache(url);
+  if (cached) return Promise.resolve(cached);
+
+  const inFlight = compressedRequests.get(url);
+  if (inFlight) return inFlight;
+
+  const request = fetchCompressed(url).finally(() => {
+    compressedRequests.delete(url);
+  });
+  compressedRequests.set(url, request);
+  return request;
+}
+
+// In-flight decodes, keyed by url. Decoded data is not cached, but concurrent
+// requests for the same variant still share a single decode so the worker is
+// never asked to decompress the same volume twice at once.
+const decodeRequests = new Map<string, Promise<Uint8Array>>();
+
+async function decodeVolume(
+  url: string,
+  dimensions: VolumeDimensions,
+): Promise<Uint8Array> {
+  const compressed = await loadCompressed(url);
+  const decoded = url.endsWith(".zst")
+    ? await decodeZstd(compressed)
+    : compressed;
 
   const expected = dimensions.width * dimensions.height * dimensions.depth;
   if (decoded.length !== expected) {
@@ -129,36 +197,29 @@ async function fetchVolumeData(
       `Unexpected volume size: got ${decoded.length} bytes, expected ${expected}.`,
     );
   }
-
-  volumeDataCache.set(url, decoded);
   return decoded;
 }
 
-// Load (and cache) the decoded voxel data for a volume. Concurrent callers for
-// the same url share a single request, so a variant that is already downloading
-// is awaited rather than fetched again.
+// Load and decode a volume's voxel data. Decoding runs in a worker (off the main
+// thread) and its result is not cached, so the caller always receives freshly
+// decoded bytes rather than a shared buffer that would pin the volume in memory.
 export function loadVolumeData(
   url: string,
   dimensions: VolumeDimensions,
 ): Promise<Uint8Array> {
-  const cached = volumeDataCache.get(url);
-  if (cached) return Promise.resolve(cached);
-
-  const inFlight = volumeDataRequests.get(url);
+  const inFlight = decodeRequests.get(url);
   if (inFlight) return inFlight;
 
-  const request = fetchVolumeData(url, dimensions).finally(() => {
-    volumeDataRequests.delete(url);
+  const request = decodeVolume(url, dimensions).finally(() => {
+    decodeRequests.delete(url);
   });
-  volumeDataRequests.set(url, request);
+  decodeRequests.set(url, request);
   return request;
 }
 
-// Start loading a volume in the background without awaiting it. Errors are
-// swallowed here; a viewer that later needs the volume will surface them.
-export function prefetchVolumeData(
-  url: string,
-  dimensions: VolumeDimensions,
-): void {
-  void loadVolumeData(url, dimensions).catch(() => {});
+// Download a volume's compressed bytes in the background. Decompression is
+// intentionally deferred to `loadVolumeData`, so prefetching only spends
+// bandwidth and cache budget, never main-thread time.
+export function prefetchVolume(url: string): void {
+  void loadCompressed(url).catch(() => {});
 }
