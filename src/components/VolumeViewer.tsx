@@ -271,6 +271,9 @@ function VolumeCanvas({
       const w = root.clientWidth;
       const h = root.clientHeight;
       if (w > 0 && h > 0) renderer!.setSize(w, h, false);
+      // setPixelRatio resizes the canvas backing store and clears its contents.
+      // A tap can change resolution without moving the camera, so force a frame.
+      needsRender = true;
     }
 
     function requestRender() {
