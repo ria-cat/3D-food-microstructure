@@ -21,9 +21,10 @@ input folder name, which the browser fetches, decompresses with `fzstd`, and
 uploads straight to the GPU. There is no intermediate compressed-TIFF step: the
 zstd compression applied here is exactly what the browser consumes.
 
-Analog volumes (anything that is not a binary mask, e.g. the raw original) are
-downsampled by 2x on every axis (area-averaged) to stay within the browser's
-~100 MB budget. Binary volumes (segmented/skeleton) are kept at full resolution.
+By default, every volume is center-cropped to a cube. The configurable side
+length defaults to 243, one quarter of the 972-pixel source width/height. Pass
+`--no-crop` to use the legacy behavior: analog volumes are downsampled by 2x on
+every axis and binary volumes are kept at full resolution.
 
 To keep the (CPU-bound) zstd compression fast, each volume is split into one
 chunk per worker thread and the chunks are compressed in parallel with joblib.
@@ -45,7 +46,7 @@ carries each sample's title and description:
           "description": "Acid-induced composite gel ...",
           "variants": [
             {"type": "raw", "url": "/volumes/wpi-0.05gg/raw.zst",
-             "width": 486, "height": 486, "depth": 337}
+             "width": 243, "height": 243, "depth": 243}
           ]
         }
       ]
@@ -60,7 +61,6 @@ Progress is reported through the `logging` module (INFO level).
 
 By default every volume is re-processed; pass `--skip-existing` to skip volumes
 whose `.zst` output already exists, reusing their existing manifest entry.
-The `pnpm preprocess` command enables this by default.
 
 Requires `numpy`, `tifffile`, `imagecodecs`, `joblib`, and `pyyaml`.
 
@@ -124,12 +124,11 @@ MB = 1024 * 1024
 # zstd's maximum compression level.
 ZSTD_LEVEL = 22
 
-# Downsample factor applied to analog volumes on every axis (2 => half
-# resolution, 8x fewer voxels). Lossless compression alone can't bring the
-# analog volume within the browser's ~100 MB budget: the data has ~7.5
-# bits/voxel of entropy, so zstd bottoms out around ~470 MB. Downsampling is the
-# only way to hit the target while keeping the volume renderable as a uniform
-# grid.
+# Center-crop side length in pixels for the default cube. The source samples
+# are 972 pixels wide, so 243 retains one quarter of each XY side.
+DEFAULT_CROP_SIZE = 243
+
+# Legacy downsample factor used when cropping is disabled.
 DOWNSAMPLE = 2
 
 # Worker threads. zstd releases the GIL, so threads parallelize without the
@@ -198,6 +197,23 @@ def downsample(volume, factor):
     # float64 temporary over the whole volume.
     summed = volume.sum(axis=(1, 3, 5), dtype=np.uint32)
     return (summed // factor**3).astype(np.uint8)
+
+
+def center_crop_volume(volume, size):
+    """Center-crop a ZYX volume to a `size`-voxel cube."""
+    depth, height, width = volume.shape
+    if depth < size or height < size or width < size:
+        raise ValueError(
+            f"Crop size {size} exceeds volume dimensions {width}x{height}x{depth}"
+        )
+    front = (depth - size) // 2
+    top = (height - size) // 2
+    left = (width - size) // 2
+    return volume[
+        front : front + size,
+        top : top + size,
+        left : left + size,
+    ]
 
 
 def is_binary(volume):
@@ -500,13 +516,16 @@ def cleanup_removed_volumes(old_samples, new_samples):
                 logger.info("Removed %s", target.relative_to(ROOT))
 
 
-def load_volume(source):
-    """Read a TIFF and downsample it when it is an analog (non-binary) volume."""
+def load_volume(source, crop=True, crop_size=DEFAULT_CROP_SIZE):
+    """Read a TIFF and crop it, or apply the legacy analog downsampling."""
     logger.info("Reading %s", source.relative_to(ROOT))
     volume = np.ascontiguousarray(tifffile.imread(source), dtype=np.uint8)
     logger.info("  shape=%s dtype=%s", volume.shape, volume.dtype)
 
-    if is_binary(volume):
+    if crop:
+        logger.info("  cropping center to %dx%dx%d", crop_size, crop_size, crop_size)
+        volume = center_crop_volume(volume, crop_size)
+    elif is_binary(volume):
         logger.info("  binary volume — keeping full resolution")
     else:
         logger.info("  analog volume — downsampling %dx per axis", DOWNSAMPLE)
@@ -514,13 +533,13 @@ def load_volume(source):
     return np.ascontiguousarray(volume, dtype=np.uint8)
 
 
-def write_thumbnail_from_source(source, target):
+def write_thumbnail_from_source(source, target, crop=True, crop_size=DEFAULT_CROP_SIZE):
     """Generate a sample's thumbnail by reading its raw volume from disk."""
-    write_thumbnail(load_volume(source), target)
+    write_thumbnail(load_volume(source, crop=crop, crop_size=crop_size), target)
 
 
-def process(source):
-    """Read, conditionally downsample, and compress one volume.
+def process(source, crop=True, crop_size=DEFAULT_CROP_SIZE):
+    """Read, crop or conditionally downsample, and compress one volume.
 
     The output mirrors the input's folder name, so `data/<sample>/<variant>.tif`
     becomes `public/volumes/<sample>/<variant>.zst`. The `raw` variant also
@@ -533,7 +552,7 @@ def process(source):
     target.parent.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
 
-    data = load_volume(source)
+    data = load_volume(source, crop=crop, crop_size=crop_size)
 
     thumbnail = None
     if source.stem.lower() == RAW_VARIANT:
@@ -599,6 +618,22 @@ def parse_args(argv=None):
         description="Preprocess raw TIFF volumes into browser-ready .zst files.",
     )
     parser.add_argument(
+        "--crop",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Center-crop every volume to a cube (default: %(default)s); "
+            "use --no-crop for legacy processing."
+        ),
+    )
+    parser.add_argument(
+        "--crop-size",
+        type=int,
+        default=DEFAULT_CROP_SIZE,
+        metavar="PIXELS",
+        help=f"Side length of the cubic crop (default: {DEFAULT_CROP_SIZE}).",
+    )
+    parser.add_argument(
         "--skip-existing",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -607,7 +642,10 @@ def parse_args(argv=None):
             "manifest entry (default: %(default)s)."
         ),
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.crop_size < 1:
+        parser.error("--crop-size must be a positive integer")
+    return args
 
 
 def main() -> None:
@@ -680,7 +718,9 @@ def main() -> None:
                 )
             else:
                 try:
-                    url, dimensions, thumb = process(source)
+                    url, dimensions, thumb = process(
+                        source, crop=args.crop, crop_size=args.crop_size
+                    )
                 except Exception as error:  # noqa: BLE001 - report and continue
                     failed = True
                     logger.error("%s: %s", source.name, error)
@@ -709,7 +749,12 @@ def main() -> None:
             )
             if raw_source is not None:
                 try:
-                    write_thumbnail_from_source(raw_source, thumb_target)
+                    write_thumbnail_from_source(
+                        raw_source,
+                        thumb_target,
+                        crop=args.crop,
+                        crop_size=args.crop_size,
+                    )
                 except Exception as error:  # noqa: BLE001 - report and continue
                     failed = True
                     logger.error("%s: %s", raw_source.name, error)

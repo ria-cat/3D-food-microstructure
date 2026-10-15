@@ -103,8 +103,8 @@ This runs `preprocessing/run-preprocess.ts`, which:
 3. Runs `preprocessing/preprocess.py` inside that environment.
 
 `preprocess.py` reads every `.tif` directly from `data/` and writes a
-slice-major `*.raw.zst` file under `public/volumes/<sample>/`, mirroring the
-input folder name, using zstd's maximum compression level. It then writes
+slice-major `*.zst` file under `public/volumes/<sample>/`, mirroring the input
+folder name, using zstd's maximum compression level. It then writes
 `manifest.json`, which groups each sample's volumes and records their
 `{width, height, depth}` alongside the sample's title and description. Existing
 manifest entries are retained for samples that still have `sample.yml` but no
@@ -113,16 +113,16 @@ present, that sample's manifest entry is rebuilt from the available variants,
 and removed samples or variants are deleted from `public/volumes/` as well.
 There is no intermediate compressed-TIFF step.
 
-Volumes whose `.raw.zst` output already exists are skipped, reusing their
-existing manifest entry. The `preprocess` npm script passes `--skip-existing`,
-so `pnpm preprocess` skips them by default; run
-`pnpm preprocess -- --no-skip-existing` to force a full re-run (e.g. after
-changing a source `.tif`).
+By default, every volume is center-cropped to a 243×243×243 cube. The samples
+are 972 pixels wide/high, so 243 is one quarter of each source XY dimension.
+Set another cube side length with `--crop-size` (for example,
+`pnpm preprocess -- --crop-size 300`), or use `--no-crop` to restore the legacy
+processing behavior: analog volumes are downsampled 2× on every axis, while
+binary volumes remain full resolution.
 
-- Analog volumes (anything that is not a binary mask, e.g. the raw original)
-  are downsampled by 2× on every axis (area-averaged). Downsampling is required
-  to keep the volume within the browser's ~100 MB budget.
-- Binary volumes (segmented/skeleton) are kept at full resolution.
+`pnpm preprocess` skips volumes whose outputs already exist. When changing crop
+settings or switching to the new default, force regeneration with
+`pnpm preprocess -- --no-skip-existing`.
 
 The script verifies each output (round-trip check) and exits non-zero on
 failure.

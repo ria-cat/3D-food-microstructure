@@ -8,23 +8,23 @@
         {
           "type": "segmented",
           "url": "/volumes/wpi-0.05gg/segmented.zst",
-          "width": 972,
-          "height": 972,
-          "depth": 675
-        },
-        {
-          "type": "skeleton",
-          "url": "/volumes/wpi-0.05gg/skeleton.zst",
-          "width": 972,
-          "height": 972,
-          "depth": 675
+          "width": 243,
+          "height": 243,
+          "depth": 243
         },
         {
           "type": "raw",
           "url": "/volumes/wpi-0.05gg/raw.zst",
-          "width": 486,
-          "height": 486,
-          "depth": 337
+          "width": 243,
+          "height": 243,
+          "depth": 243
+        },
+        {
+          "type": "skeleton",
+          "url": "/volumes/wpi-0.05gg/skeleton.zst",
+          "width": 243,
+          "height": 243,
+          "depth": 243
         }
       ]
     },
@@ -36,23 +36,23 @@
         {
           "type": "segmented",
           "url": "/volumes/wpi-0.1gg/segmented.zst",
-          "width": 972,
-          "height": 972,
-          "depth": 675
+          "width": 243,
+          "height": 243,
+          "depth": 243
         },
         {
           "type": "skeleton",
           "url": "/volumes/wpi-0.1gg/skeleton.zst",
-          "width": 972,
-          "height": 972,
-          "depth": 675
+          "width": 243,
+          "height": 243,
+          "depth": 243
         },
         {
           "type": "raw",
           "url": "/volumes/wpi-0.1gg/raw.zst",
-          "width": 486,
-          "height": 486,
-          "depth": 337
+          "width": 243,
+          "height": 243,
+          "depth": 243
         }
       ]
     }
