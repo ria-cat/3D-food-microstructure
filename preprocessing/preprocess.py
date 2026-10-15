@@ -9,10 +9,11 @@ Expected input layout — each sample lives in its own folder under `data/`:
         segmented.tif    # optional binary variant
         skeleton.tif     # optional binary variant
 
-Every folder under `data/` must contain a `sample.yml` with a non-empty `title`
-and `description`, and a `raw.tif` volume; the script fails if either is missing
-or incomplete. The variant type is the source file's stem (e.g. `raw.tif` ->
-`raw`), which the viewer maps to a global render configuration.
+Samples with a `sample.yml` and no TIFF files are preserved in the manifest
+without reprocessing. A sample with TIFF files must include `raw.tif`; other
+variants are optional. Samples without `sample.yml` are removed from the
+manifest. The variant type is the source file's stem (e.g. `raw.tif` -> `raw`),
+which the viewer maps to a global render configuration.
 
 Every `.tif`/`.tiff` found is read directly from `data/` and written as a
 slice-major `*.zst` file under `public/volumes/<sample>/`, mirroring the
@@ -70,6 +71,7 @@ import argparse
 import json
 import logging
 import os
+import shutil
 import sys
 import time
 from collections.abc import Iterator
@@ -286,15 +288,16 @@ def sample_folders():
 def folder_volumes(folder):
     """All .tif/.tiff files in a sample folder.
 
-    Raises SampleError when the required `raw` volume is missing, since every
-    sample must provide one.
+    Raises SampleError when TIFF volumes are present but the required `raw`
+    volume is missing. An empty result is handled by the caller as a skipped
+    sample.
     """
     volumes = [
         path
         for path in folder.rglob("*")
         if path.is_file() and path.suffix.lower() in TIF_SUFFIXES
     ]
-    if not any(path.stem.lower() == RAW_VARIANT for path in volumes):
+    if volumes and not any(path.stem.lower() == RAW_VARIANT for path in volumes):
         raise SampleError(
             f"Missing {RAW_VARIANT}.tif in {folder.relative_to(ROOT)} "
             f"(every sample must provide a '{RAW_VARIANT}' volume)"
@@ -373,15 +376,10 @@ def volume_url(target):
     return f"/volumes/{target.relative_to(OUTPUT_DIR).as_posix()}"
 
 
-def load_manifest_dimensions():
-    """URL -> dimensions from an existing manifest, for --skip-existing.
-
-    Understands both the current `{"samples": [...]}` layout and the legacy
-    flat `{url: {width, height, depth}}` layout, so upgrading doesn't force a
-    full re-run.
-    """
+def read_manifest():
+    """Read the current manifest, returning an empty mapping when unavailable."""
     try:
-        data = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        return json.loads(MANIFEST.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return {}
     except (OSError, json.JSONDecodeError) as error:
@@ -392,6 +390,14 @@ def load_manifest_dimensions():
         )
         return {}
 
+
+def load_manifest_dimensions(data):
+    """URL -> dimensions from an existing manifest, for --skip-existing.
+
+    Understands both the current `{"samples": [...]}` layout and the legacy
+    flat `{url: {width, height, depth}}` layout, so upgrading doesn't force a
+    full re-run.
+    """
     dimensions = {}
     if isinstance(data, dict) and isinstance(data.get("samples"), list):
         for sample in data["samples"]:
@@ -412,6 +418,86 @@ def load_manifest_dimensions():
                     "depth": dims["depth"],
                 }
     return dimensions
+
+
+def delete_sample_volume_dir(sample_id):
+    """Remove a sample's generated volume directory without following symlinks."""
+    if not sample_id or Path(sample_id).name != sample_id or sample_id in {".", ".."}:
+        return
+
+    sample_dir = OUTPUT_DIR / sample_id
+    if sample_dir.is_symlink():
+        sample_dir.unlink()
+    elif sample_dir.is_dir() and sample_dir.resolve().parent == OUTPUT_DIR.resolve():
+        shutil.rmtree(sample_dir)
+    else:
+        return
+    logger.info("Removed %s", sample_dir.relative_to(ROOT))
+
+
+def volume_path_from_manifest_url(url, sample_id):
+    """Resolve a manifest volume URL only when it stays in that sample's output."""
+    prefix = "/volumes/"
+    if not isinstance(url, str) or not url.startswith(prefix):
+        return None
+
+    relative = Path(url[len(prefix) :])
+    if (
+        not relative.parts
+        or relative.is_absolute()
+        or relative.parts[0] != sample_id
+        or any(part in {".", ".."} for part in relative.parts)
+    ):
+        return None
+
+    output_dir = OUTPUT_DIR.resolve()
+    sample_dir = (OUTPUT_DIR / sample_id).resolve()
+    if sample_dir.parent != output_dir:
+        return None
+
+    target = OUTPUT_DIR / relative
+    try:
+        target.resolve().relative_to(sample_dir)
+    except ValueError:
+        return None
+    return target
+
+
+def cleanup_removed_volumes(old_samples, new_samples):
+    """Delete generated files no longer referenced by the merged manifest."""
+    new_ids = {sample["id"] for sample in new_samples}
+    new_urls = set()
+    for sample in new_samples:
+        variants = sample.get("variants", [])
+        if isinstance(variants, list):
+            new_urls.update(
+                variant["url"]
+                for variant in variants
+                if isinstance(variant, dict) and isinstance(variant.get("url"), str)
+            )
+
+    for sample in old_samples:
+        if not isinstance(sample, dict) or not isinstance(sample.get("id"), str):
+            continue
+
+        sample_id = sample["id"]
+        if sample_id not in new_ids:
+            delete_sample_volume_dir(sample_id)
+            continue
+
+        variants = sample.get("variants", [])
+        if not isinstance(variants, list):
+            continue
+        for variant in variants:
+            if not isinstance(variant, dict):
+                continue
+            url = variant.get("url")
+            if url in new_urls:
+                continue
+            target = volume_path_from_manifest_url(url, sample_id)
+            if target is not None and target.is_file():
+                target.unlink()
+                logger.info("Removed %s", target.relative_to(ROOT))
 
 
 def load_volume(source):
@@ -531,20 +617,52 @@ def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     folders = sample_folders()
-    if not folders:
-        logger.error("No sample folders found under %s", RAW_DIR)
-        raise SystemExit(1)
-    logger.info("Found %d sample(s) under %s", len(folders), RAW_DIR.relative_to(ROOT))
+    logger.info(
+        "Found %d sample folder(s) under %s", len(folders), RAW_DIR.relative_to(ROOT)
+    )
 
-    existing = load_manifest_dimensions()
+    manifest = read_manifest()
+    existing = load_manifest_dimensions(manifest)
+    old_samples = (
+        manifest.get("samples", [])
+        if isinstance(manifest, dict) and isinstance(manifest.get("samples"), list)
+        else []
+    )
+    folders_by_id = {folder.name: folder for folder in folders}
+    samples_by_id = {
+        sample["id"]: sample
+        for sample in old_samples
+        if isinstance(sample, dict)
+        and isinstance(sample.get("id"), str)
+        and sample["id"] in folders_by_id
+        and (folders_by_id[sample["id"]] / SAMPLE_META).is_file()
+    }
+
     failed = False
-    samples = []
     for folder in folders:
-        # Every sample must provide a `sample.yml` (title + description) and a
-        # `raw.tif` volume; either being missing is a hard error.
+        meta_path = folder / SAMPLE_META
+        if not meta_path.is_file():
+            logger.warning(
+                "Missing %s in %s — removing sample from manifest",
+                SAMPLE_META,
+                folder.name,
+            )
+            continue
+
+        try:
+            volumes = folder_volumes(folder)
+        except (OSError, SampleError) as error:
+            logger.error("%s", error)
+            raise SystemExit(1) from error
+
+        if not volumes:
+            logger.warning(
+                "No .tif/.tiff files found for %s — keeping manifest entry", folder.name
+            )
+            continue
+
         try:
             title, description = load_sample_meta(folder)
-            volumes = folder_volumes(folder)
         except (OSError, SampleError) as error:
             logger.error("%s", error)
             raise SystemExit(1) from error
@@ -580,7 +698,6 @@ def main() -> None:
             )
 
         if not variants:
-            logger.warning("No volumes processed for %s — skipping", folder.name)
             continue
 
         # Ensure the sample has a thumbnail even when its raw volume was skipped
@@ -597,15 +714,15 @@ def main() -> None:
                     failed = True
                     logger.error("%s: %s", raw_source.name, error)
 
-        samples.append(
-            {
-                "id": folder.name,
-                "title": title,
-                "description": description,
-                "variants": variants,
-            }
-        )
+        samples_by_id[folder.name] = {
+            "id": folder.name,
+            "title": title,
+            "description": description,
+            "variants": variants,
+        }
 
+    samples = list(samples_by_id.values())
+    cleanup_removed_volumes(old_samples, samples)
     MANIFEST.write_text(
         json.dumps({"samples": samples}, indent=2) + "\n",
         encoding="utf-8",

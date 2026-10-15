@@ -106,8 +106,12 @@ This runs `preprocessing/run-preprocess.ts`, which:
 slice-major `*.raw.zst` file under `public/volumes/<sample>/`, mirroring the
 input folder name, using zstd's maximum compression level. It then writes
 `manifest.json`, which groups each sample's volumes and records their
-`{width, height, depth}` alongside the sample's title and description. There is
-no intermediate compressed-TIFF step.
+`{width, height, depth}` alongside the sample's title and description. Existing
+manifest entries are retained for samples that still have `sample.yml` but no
+local TIFFs; entries are removed when `sample.yml` is removed. When TIFFs are
+present, that sample's manifest entry is rebuilt from the available variants,
+and removed samples or variants are deleted from `public/volumes/` as well.
+There is no intermediate compressed-TIFF step.
 
 Volumes whose `.raw.zst` output already exists are skipped, reusing their
 existing manifest entry. The `preprocess` npm script passes `--skip-existing`,
