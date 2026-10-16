@@ -57,6 +57,64 @@
           "depth": 243
         }
       ]
+    },
+    {
+      "id": "wpi-0.15gg",
+      "title": "WPI 0.15% GG",
+      "description": "Acid-induced composite gel (3% w/w WPI, 0.15% w/w GG).",
+      "variants": [
+        {
+          "type": "preprocessed",
+          "label": "Pre-processed",
+          "url": "/volumes/wpi-0.15gg/preprocessed.zst",
+          "width": 243,
+          "height": 243,
+          "depth": 243
+        },
+        {
+          "type": "segmented",
+          "url": "/volumes/wpi-0.15gg/segmented.zst",
+          "width": 243,
+          "height": 243,
+          "depth": 243
+        },
+        {
+          "type": "skeleton",
+          "url": "/volumes/wpi-0.15gg/skeleton.zst",
+          "width": 243,
+          "height": 243,
+          "depth": 243
+        }
+      ]
+    },
+    {
+      "id": "wpi-0.20gg",
+      "title": "WPI 0.20% GG",
+      "description": "Acid-induced composite gel (3% w/w WPI, 0.20% w/w GG).",
+      "variants": [
+        {
+          "type": "preprocessed",
+          "label": "Pre-processed",
+          "url": "/volumes/wpi-0.20gg/preprocessed.zst",
+          "width": 243,
+          "height": 243,
+          "depth": 243
+        },
+        {
+          "type": "segmented",
+          "url": "/volumes/wpi-0.20gg/segmented.zst",
+          "width": 243,
+          "height": 243,
+          "depth": 243
+        },
+        {
+          "type": "skeleton",
+          "url": "/volumes/wpi-0.20gg/skeleton.zst",
+          "width": 243,
+          "height": 243,
+          "depth": 243
+        }
+      ]
     }
   ]
 }
