@@ -32,12 +32,12 @@ export default function SampleCard({
   onOpen,
 }: SampleCardProps) {
   return (
-    <li className="group flex flex-col rounded-2xl border border-zinc-800 bg-zinc-900 transition-transform duration-200 hover:-translate-y-1">
+    <li className="sample-card group flex flex-col transition-transform duration-300 hover:-translate-y-1">
       <button
         type="button"
         onClick={onOpen}
         aria-label={`View ${sample.title} in 3D`}
-        className="relative block aspect-square w-full cursor-pointer overflow-hidden rounded-t-[15px] bg-zinc-950 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-400/70"
+        className="sample-image relative block aspect-[1.08] w-full cursor-pointer overflow-hidden text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#697d4f]"
       >
         {thumbnail ? (
           <>
@@ -49,11 +49,11 @@ export default function SampleCard({
               alt=""
               loading="lazy"
               decoding="async"
-              className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+              className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
             />
             <div
               aria-hidden
-              className="absolute inset-0 bg-linear-to-t from-zinc-950/80 via-zinc-950/10 to-transparent"
+              className="absolute inset-0 bg-linear-to-t from-[#17231d]/75 via-transparent to-transparent"
             />
           </>
         ) : (
@@ -80,17 +80,27 @@ export default function SampleCard({
           }`}
         >
           {thumbnail ? null : (
-            <span className="text-teal-300/80 transition-colors group-hover:text-teal-200">
+            <span className="text-[#d8e9a8]/80 transition-colors group-hover:text-[#e5f0c8]">
               <CubeIcon />
             </span>
           )}
         </div>
       </button>
 
-      <div className="flex flex-1 flex-col gap-2.5 p-4">
-        <h3 className="text-base font-bold leading-snug">{sample.title}</h3>
+      <div className="sample-card-caption flex flex-1 flex-col gap-2.5 p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="sample-label">SPECIMEN / {sample.id.toUpperCase()}</p>
+            <h3 className="mt-2 font-serif text-lg font-semibold leading-snug">
+              {sample.title}
+            </h3>
+          </div>
+          <span aria-hidden="true" className="sample-arrow">
+            ↗
+          </span>
+        </div>
         {sample.description ? (
-          <p className="text-sm leading-relaxed text-zinc-400">
+          <p className="sample-description text-sm leading-relaxed">
             {sample.description}
           </p>
         ) : null}

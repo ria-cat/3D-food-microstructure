@@ -1,0 +1,80 @@
+---
+import { Image } from "astro:assets";
+import heroImage from "../assets/hero_image.jpg";
+---
+
+<section class="relative overflow-hidden bg-[#17201b] text-[#eceee6]">
+    <div class="mx-auto grid min-h-147.5 max-w-350 grid-cols-[1fr_0.86fr] items-center gap-[clamp(3rem,8vw,8rem)] px-[clamp(1.25rem,8vw,8rem)] py-22 max-[760px]:min-h-auto max-[760px]:grid-cols-1 max-[760px]:gap-12 max-[760px]:pt-18 max-[760px]:pb-20">
+        <div class="max-w-152.5">
+            <h1 class="m-0 font-serif text-[clamp(3.25rem,6.5vw,6.5rem)] leading-[0.98] font-normal tracking-[-0.065em] max-[760px]:text-[clamp(3.3rem,14vw,5.2rem)]">
+                Small worlds.
+                <br />
+                <em class="font-normal text-[#c6d79c]">Remarkable</em>{" "}
+                structure.
+            </h1>
+            <p class="mt-[1.7rem] max-w-122.5 text-[0.99rem] leading-[1.8] text-[#c0c9bc]">
+                Look closer at the hidden architecture of food. Explore
+                high-resolution 3D reconstructions of model food microstructure,
+                captured with confocal laser scanning microscopy.
+            </p>
+        </div>
+
+        <div class="hidden md:block w-full max-w-110 justify-self-end max-[760px]:max-w-120 max-[760px]:justify-self-start">
+            <div class="hero-figure relative aspect-[0.92] overflow-hidden border border-[#768174] bg-[#252721] shadow-[20px_20px_0_-8px_#53644a]">
+                <Image
+                    src={heroImage}
+                    alt="3D confocal microscopy image of a whey protein and gum gel microstructure"
+                    loading="lazy"
+                    class="h-full w-full object-cover saturate-[0.82] contrast-[1.06]"
+                />
+                <div
+                    class="absolute top-4 right-4 z-1 size-[1.2rem] border-t border-r border-[#f4f1e8]/75"
+                    aria-hidden="true"
+                />
+                <div
+                    class="absolute right-4 bottom-4 z-1 size-[1.2rem] border-r border-b border-[#f4f1e8]/75"
+                    aria-hidden="true"
+                />
+            </div>
+            <div class="flex items-center gap-[1.6rem] pt-[1.15rem]">
+                <div class="grid gap-[0.35rem]">
+                    <span class="text-[0.56rem] font-bold tracking-[0.15em] text-[#9cab96]">
+                        SPECIMEN
+                    </span>
+                    <strong class="font-serif text-[0.88rem] font-normal text-[#f4f1e8]">
+                        WPI + guar gum gel
+                    </strong>
+                </div>
+                <div class="grid gap-[0.35rem]">
+                    <span class="text-[0.56rem] font-bold tracking-[0.15em] text-[#9cab96]">
+                        METHOD
+                    </span>
+                    <strong class="font-serif text-[0.88rem] font-normal text-[#f4f1e8]">
+                        Confocal imaging
+                    </strong>
+                </div>
+                <span
+                    class="ml-auto text-[1.25rem] text-[#c6d79c]"
+                    aria-hidden="true"
+                >
+                    ↗
+                </span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<style>
+    .hero-figure::after {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+            180deg,
+            rgb(15 20 15 / 16%),
+            transparent 35%,
+            rgb(15 20 15 / 18%)
+        );
+        content: "";
+        pointer-events: none;
+    }
+</style>

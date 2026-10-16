@@ -1,5 +1,6 @@
 ---
 import "../styles/global.css";
+import { Font } from "astro:assets";
 import { resolvePublicUrl } from "../lib/assets";
 
 interface Props {
@@ -20,6 +21,7 @@ const { title, description } = Astro.props;
         />
         <meta name="theme-color" content="#09090b" />
         <meta name="generator" content={Astro.generator} />
+        <Font cssVariable="--font-georgia" />
         <!-- <link
             rel="icon"
             type="image/svg+xml"

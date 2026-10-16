@@ -2,7 +2,7 @@
 import { getImage } from "astro:assets";
 import type { ImageMetadata } from "astro";
 import Layout from "../layouts/Layout.astro";
-import Hero from "../components/Hero";
+import Hero from "../components/Hero.astro";
 import Gallery from "../components/Gallery";
 import Author from "../components/Author.astro";
 import authorAvatar from "../assets/author-avatar.jpg";
@@ -39,7 +39,7 @@ await Promise.all(
     <Hero />
     <Gallery client:load thumbnails={thumbnails} />
     <Author
-        name="Ria Rodriguez"
+        name="Ria Cathleen Rodriguez"
         role="PhD Fellow, Structural Food Science"
         affiliation="Ingredient and Dairy Technology, University of Copenhagen"
         bio=""

@@ -1,9 +1,8 @@
 @import "tailwindcss";
 
-@theme {
-    --font-sans:
-        ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-        "Helvetica Neue", Arial, sans-serif;
+@theme inline {
+    --font-sans: "Avenir Next", Avenir, "Segoe UI", sans-serif;
+    --font-serif: "Georgia", var(--font-georgia), "Times New Roman", serif;
 }
 
 @layer base {
@@ -11,27 +10,133 @@
         scroll-behavior: smooth;
         color-scheme: dark;
         -webkit-text-size-adjust: 100%;
+        background: #111411;
     }
 
     body {
-        @apply bg-zinc-950 font-sans text-zinc-100 antialiased;
+        @apply bg-[#111411] font-sans text-[#eceee6] antialiased;
     }
 
     ::selection {
-        @apply bg-teal-500/30 text-white;
+        background: #566d43;
+        color: #f1f3eb;
+    }
+
+    a {
+        color: inherit;
     }
 }
 
 @layer components {
     .btn {
-        @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold transition-all duration-200 focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:outline-none active:scale-[0.98];
+        @apply inline-flex items-center justify-center gap-3 rounded-full px-5 py-3 text-sm font-semibold transition-all duration-200 focus-visible:ring-2 focus-visible:ring-[#a9c77a] focus-visible:outline-none active:scale-[0.98];
     }
 
     .btn-primary {
-        @apply bg-teal-500 text-zinc-950 shadow-lg shadow-teal-500/25 hover:bg-teal-400;
+        @apply bg-[#b8ce8a] text-[#172019] hover:bg-[#c8d99f];
     }
 
     .btn-ghost {
-        @apply border border-zinc-700 bg-zinc-900 text-zinc-100 hover:border-zinc-500 hover:bg-zinc-800;
+        @apply border border-[#59665c] bg-transparent text-[#eceee6] hover:border-[#a9c77a] hover:bg-white/5;
+    }
+
+    .gallery-section {
+        max-width: 1280px;
+    }
+
+    .gallery-title {
+        margin: 0;
+        color: #eceee6;
+        font-size: clamp(2.8rem, 5.2vw, 4.9rem);
+        font-weight: 400;
+        letter-spacing: -0.055em;
+        line-height: 0.98;
+    }
+    .gallery-title em {
+        color: #b4ca88;
+        font-weight: 400;
+    }
+    .gallery-intro {
+        max-width: 34rem;
+        margin: 1.3rem 0 0;
+        color: #a3aaa1;
+        font-size: 0.94rem;
+        line-height: 1.8;
+    }
+    .sample-card {
+        overflow: hidden;
+        border: 1px solid #343d36;
+        background: #1a201c;
+        box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+    }
+    .sample-card:hover {
+        border-color: #69775c;
+        box-shadow: 0 15px 32px rgb(0 0 0 / 24%);
+    }
+    .sample-image {
+        background: #202720;
+    }
+    .sample-card-caption {
+        border-top: 1px solid #343d36;
+    }
+    .sample-label {
+        margin: 0;
+        color: #a9bc83;
+        font-size: 0.56rem;
+        font-weight: 800;
+        letter-spacing: 0.14em;
+    }
+    .sample-card h3 {
+        color: #eceee6;
+        font-weight: 400;
+    }
+    .sample-description {
+        color: #a3aaa1;
+    }
+    .sample-arrow {
+        color: #b4ca88;
+        font-size: 1rem;
+        transition: transform 0.2s;
+    }
+    .sample-card:hover .sample-arrow {
+        transform: translate(2px, -2px);
+    }
+
+    .author-section {
+        max-width: 1280px;
+    }
+    .author-card {
+        border: 1px solid #506258;
+        background: #20342d;
+        color: #f4f1e8;
+    }
+    .author-avatar {
+        border: 1px solid #91a17a;
+        filter: saturate(0.82);
+    }
+    .author-kicker {
+        color: #c6d79c;
+    }
+    .author-card h2 {
+        color: #f4f1e8;
+        font-size: clamp(2.2rem, 4vw, 3.3rem);
+        font-weight: 400;
+        letter-spacing: -0.045em;
+    }
+    .author-card p {
+        color: #c0c9bc;
+    }
+    .author-card > div:last-child > p:nth-of-type(2) {
+        color: #9eae99;
+    }
+    .author-link {
+        border-color: #64766a;
+        background: rgb(255 255 255 / 3%);
+        color: #f4f1e8;
+        text-decoration: none;
+    }
+    .author-link:hover {
+        border-color: #c6d79c;
+        color: #d8e9a8;
     }
 }
