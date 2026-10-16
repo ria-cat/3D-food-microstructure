@@ -41,47 +41,37 @@ export default function Gallery({ thumbnails = {} }: GalleryProps) {
     return (
         <section
             id="gallery"
-            className="mx-auto max-w-6xl scroll-mt-6 px-5 py-16 sm:px-8 sm:py-24"
+            className="page-container page-section scroll-mt-6"
         >
-            <div className="">
-                <h2 className="m-0 font-serif text-[clamp(2.8rem,5.2vw,4.9rem)] leading-[0.98] font-normal tracking-[-0.055em] text-[#eceee6]">
-                    A closer look at{" "}
-                    <em className="font-normal text-[#b4ca88]">
-                        what’s inside.
-                    </em>
+            <>
+                <h2 className="gallery-heading">
+                    A closer look at <em>what’s inside.</em>
                 </h2>
-                <p className="mt-[1.3rem] text-[0.94rem] leading-[1.8] text-[#a3aaa1]">
+                <p className="gallery-intro mt-[1.3rem]">
                     Each specimen is a window into the structure of food. Open a
                     sample to rotate, inspect, and compare its 3D volume.
                 </p>
-                <ul className="mt-6 space-y-3 text-sm leading-relaxed text-[#a3aaa1]">
+                <ul className="gallery-notes mt-6 space-y-3">
                     <li className="border border-[#343d36] bg-[#1a201c] px-4 py-3">
-                        <strong className="font-medium text-[#b4ca88]">
-                            Pre-processed Stack:
-                        </strong>{" "}
-                        The original image stack after contrast enhancement,
-                        improving the visibility of structural features.
+                        <strong>Pre-processed Stack:</strong> The original image
+                        stack after contrast enhancement, improving the
+                        visibility of structural features.
                     </li>
                     <li className="border border-[#343d36] bg-[#1a201c] px-4 py-3">
-                        <strong className="font-medium text-[#b4ca88]">
-                            Segmented Stack:
-                        </strong>{" "}
-                        A binary representation where network voxels are
-                        identified as foreground and all other voxels as
-                        background.
+                        <strong>Segmented Stack:</strong> A binary
+                        representation where network voxels are identified as
+                        foreground and all other voxels as background.
                     </li>
                     <li className="border border-[#343d36] bg-[#1a201c] px-4 py-3">
-                        <strong className="font-medium text-[#b4ca88]">
-                            Skeletonized Stack:
-                        </strong>{" "}
-                        A simplified 3D network reduced to a one-voxel-thick
-                        framework for connectivity and topology analysis.
+                        <strong>Skeletonized Stack:</strong> A simplified 3D
+                        network reduced to a one-voxel-thick framework for
+                        connectivity and topology analysis.
                     </li>
                 </ul>
-            </div>
+            </>
 
             {error ? (
-                <p className="mt-10 text-sm text-[#a3aaa1]">{error}</p>
+                <p className="mt-10">{error}</p>
             ) : samples === null ? (
                 <div className="mt-10 flex justify-center">
                     <span className="h-8 w-8 animate-spin rounded-full border-2 border-[#343d36] border-t-[#b4ca88]" />

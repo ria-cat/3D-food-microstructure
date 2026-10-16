@@ -3,16 +3,16 @@ import { Image } from "astro:assets";
 import heroImage from "../assets/hero_image.jpg";
 ---
 
-<section class="relative overflow-hidden bg-[#17201b] text-[#eceee6]">
-    <div class="mx-auto grid min-h-147.5 max-w-350 grid-cols-[1fr_0.86fr] items-center gap-[clamp(3rem,8vw,8rem)] px-[clamp(1.25rem,8vw,8rem)] py-22 max-[760px]:min-h-auto max-[760px]:grid-cols-1 max-[760px]:gap-12 max-[760px]:pt-18 max-[760px]:pb-20">
+<section class="relative overflow-hidden bg-[#17201b]">
+    <div class="page-container page-section grid min-h-147.5 grid-cols-[1fr_0.86fr] items-center gap-[clamp(3rem,8vw,8rem)] max-[760px]:min-h-auto max-[760px]:grid-cols-1 max-[760px]:gap-12">
         <div class="max-w-152.5">
-            <h1 class="m-0 font-serif text-[clamp(3.25rem,6.5vw,6.5rem)] leading-[0.98] font-normal tracking-[-0.065em] max-[760px]:text-[clamp(3.3rem,14vw,5.2rem)]">
+            <h1 class="hero-heading">
                 Small worlds.
                 <br />
-                <em class="font-normal text-[#c6d79c]">Remarkable</em>{" "}
+                <em>Remarkable</em>{" "}
                 structure.
             </h1>
-            <p class="mt-[1.7rem] max-w-122.5 text-[0.99rem] leading-[1.8] text-[#c0c9bc]">
+            <p class="hero-copy">
                 Look closer at the hidden architecture of food. Explore
                 high-resolution 3D reconstructions of model food microstructure,
                 captured with confocal laser scanning microscopy.
@@ -38,23 +38,23 @@ import heroImage from "../assets/hero_image.jpg";
             </div>
             <div class="flex items-center gap-[1.6rem] pt-[1.15rem]">
                 <div class="grid gap-[0.35rem]">
-                    <span class="text-[0.56rem] font-bold tracking-[0.15em] text-[#9cab96]">
+                    <span class="hero-meta-label">
                         SPECIMEN
                     </span>
-                    <strong class="font-serif text-[0.88rem] font-normal text-[#f4f1e8]">
+                    <strong class="hero-meta-value">
                         WPI + guar gum gel
                     </strong>
                 </div>
                 <div class="grid gap-[0.35rem]">
-                    <span class="text-[0.56rem] font-bold tracking-[0.15em] text-[#9cab96]">
+                    <span class="hero-meta-label">
                         METHOD
                     </span>
-                    <strong class="font-serif text-[0.88rem] font-normal text-[#f4f1e8]">
+                    <strong class="hero-meta-value">
                         Confocal imaging
                     </strong>
                 </div>
                 <span
-                    class="ml-auto text-[1.25rem] text-[#c6d79c]"
+                    class="hero-meta-arrow ml-auto"
                     aria-hidden="true"
                 >
                     ↗
