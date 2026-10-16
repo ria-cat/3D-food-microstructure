@@ -143,7 +143,9 @@ export default function FullScreenViewer({
                                         )
                                     }}
                                     className={`viewer-tab rounded-full px-4 py-1.5 transition-colors focus-visible:ring-2 focus-visible:ring-teal-400/70 focus-visible:outline-none ${
-                                        active ? "bg-teal-500" : ""
+                                        active
+                                            ? "bg-(--accent) text-[#111411]"
+                                            : ""
                                     }`}
                                 >
                                     {v.label}
