@@ -40,29 +40,6 @@
         @apply border border-[#59665c] bg-transparent text-[#eceee6] hover:border-[#a9c77a] hover:bg-white/5;
     }
 
-    .gallery-section {
-        max-width: 1280px;
-    }
-
-    .gallery-title {
-        margin: 0;
-        color: #eceee6;
-        font-size: clamp(2.8rem, 5.2vw, 4.9rem);
-        font-weight: 400;
-        letter-spacing: -0.055em;
-        line-height: 0.98;
-    }
-    .gallery-title em {
-        color: #b4ca88;
-        font-weight: 400;
-    }
-    .gallery-intro {
-        max-width: 34rem;
-        margin: 1.3rem 0 0;
-        color: #a3aaa1;
-        font-size: 0.94rem;
-        line-height: 1.8;
-    }
     .sample-card {
         overflow: hidden;
         border: 1px solid #343d36;

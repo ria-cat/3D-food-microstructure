@@ -52,8 +52,9 @@ carries each sample's title and description:
       ]
     }
 
-Each sample's `raw.tif` also yields a thumbnail preview: a cropped middle
-slice, colored with the raw variant's default colormap and written to
+Each sample's `raw.tif` also yields a thumbnail preview from the original
+full-resolution volume: a cropped middle slice, colored with the raw variant's
+default colormap and written to
 `src/assets/thumbnails/<sample>.png`. Keeping it under `src/` (rather than
 `public/`) lets Astro import and optimize it at build time.
 
@@ -533,9 +534,11 @@ def load_volume(source, crop=True, crop_size=DEFAULT_CROP_SIZE):
     return np.ascontiguousarray(volume, dtype=np.uint8)
 
 
-def write_thumbnail_from_source(source, target, crop=True, crop_size=DEFAULT_CROP_SIZE):
-    """Generate a sample's thumbnail by reading its raw volume from disk."""
-    write_thumbnail(load_volume(source, crop=crop, crop_size=crop_size), target)
+def write_thumbnail_from_source(source, target):
+    """Generate a thumbnail from the source TIFF at its original resolution."""
+    logger.info("Reading full-resolution thumbnail source %s", source.relative_to(ROOT))
+    volume = np.ascontiguousarray(tifffile.imread(source), dtype=np.uint8)
+    write_thumbnail(volume, target)
 
 
 def process(source, crop=True, crop_size=DEFAULT_CROP_SIZE):
@@ -557,7 +560,7 @@ def process(source, crop=True, crop_size=DEFAULT_CROP_SIZE):
     thumbnail = None
     if source.stem.lower() == RAW_VARIANT:
         thumbnail = thumbnail_target(source)
-        write_thumbnail(data, thumbnail)
+        write_thumbnail_from_source(source, thumbnail)
 
     n_chunks = min(N_JOBS, max(1, data.size // MIN_CHUNK_BYTES))
     chunks = split_chunks(data, n_chunks)
@@ -749,12 +752,7 @@ def main() -> None:
             )
             if raw_source is not None:
                 try:
-                    write_thumbnail_from_source(
-                        raw_source,
-                        thumb_target,
-                        crop=args.crop,
-                        crop_size=args.crop_size,
-                    )
+                    write_thumbnail_from_source(raw_source, thumb_target)
                 except Exception as error:  # noqa: BLE001 - report and continue
                     failed = True
                     logger.error("%s: %s", raw_source.name, error)
