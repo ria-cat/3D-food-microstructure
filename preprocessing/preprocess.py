@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
-"""Preprocess the raw TIFF volumes into browser-ready zstd-compressed raw volumes.
+"""Preprocess TIFF volumes into browser-ready zstd-compressed volumes.
 
 Expected input layout — each sample lives in its own folder under `data/`:
 
     data/<sample>/
         sample.yml       # required: title + description for the sample
-        raw.tif          # required: original (analog) volume
+        preprocessed.tif # required: default volume
         segmented.tif    # optional binary variant
         skeleton.tif     # optional binary variant
 
 Samples with a `sample.yml` and no TIFF files are preserved in the manifest
-without reprocessing. A sample with TIFF files must include `raw.tif`; other
-variants are optional. Samples without `sample.yml` are removed from the
-manifest. The variant type is the source file's stem (e.g. `raw.tif` -> `raw`),
-which the viewer maps to a global render configuration.
+without reprocessing. A sample with TIFF files must include
+`preprocessed.tif`; other variants are optional. Samples without `sample.yml`
+are removed from the manifest. The variant type is the source file's stem
+(e.g. `preprocessed.tif` -> `preprocessed`), which the viewer maps to a
+global render configuration.
 
 Every `.tif`/`.tiff` found is read directly from `data/` and written as a
 slice-major `*.zst` file under `public/volumes/<sample>/`, mirroring the
@@ -45,16 +46,17 @@ carries each sample's title and description:
           "title": "WPI 0.05% GG",
           "description": "Acid-induced composite gel ...",
           "variants": [
-            {"type": "raw", "url": "/volumes/wpi-0.05gg/raw.zst",
+            {"type": "preprocessed", "label": "Pre-processed",
+             "url": "/volumes/wpi-0.05gg/preprocessed.zst",
              "width": 243, "height": 243, "depth": 243}
           ]
         }
       ]
     }
 
-Each sample's `raw.tif` also yields a thumbnail preview from the original
-full-resolution volume: a cropped middle slice, colored with the raw variant's
-default colormap and written to
+Each sample's `preprocessed.tif` also yields a thumbnail preview from the
+full-resolution volume: a cropped middle slice, colored with the default
+preprocessed variant colormap and written to
 `src/assets/thumbnails/<sample>.png`. Keeping it under `src/` (rather than
 `public/`) lets Astro import and optimize it at build time.
 
@@ -86,7 +88,7 @@ import yaml
 from joblib import Parallel, delayed
 
 ROOT = Path(__file__).resolve().parent.parent
-RAW_DIR = ROOT / "data"
+DATA_DIR = ROOT / "data"
 OUTPUT_DIR = ROOT / "public" / "volumes"
 MANIFEST = OUTPUT_DIR / "manifest.json"
 
@@ -96,15 +98,16 @@ TIF_SUFFIXES = {".tif", ".tiff"}
 # `description`.
 SAMPLE_META = "sample.yml"
 
-# The variant every sample must provide. It is the default volume shown when a
-# sample is opened.
-RAW_VARIANT = "raw"
+# The source variant every sample must provide. The viewer displays its
+# preprocessed output using this human-readable label.
+PREPROCESSED_VARIANT = "preprocessed"
+PREPROCESSED_VARIANT_LABEL = "Pre-processed"
 
 # Thumbnail previews are written here so Astro can import and optimize them at
 # build time; files under `public/` are served as-is and never processed.
 THUMBNAIL_DIR = ROOT / "src" / "assets" / "thumbnails"
 
-# The raw variant's default render configuration, mirrored from
+# The pre-processed variant's default render configuration, mirrored from
 # `src/data/variants.ts` and `src/lib/colormaps.ts` so a thumbnail matches what
 # the viewer shows when the sample is opened.
 INFERNO_STOPS = [
@@ -255,10 +258,10 @@ def colormap_lut(stops, size=256):
 
 
 def colorize(intensity):
-    """Colorize an 8-bit intensity image with the raw variant's default look.
+    """Colorize an 8-bit image using the default preprocessed variant look.
 
-    Applies the same contrast window (`clim`) and colormap the viewer uses for
-    the raw volume, so the thumbnail matches what opening the sample shows.
+    Applies the viewer's contrast window and colormap so the thumbnail matches
+    what opening the sample shows.
     """
     low, high = THUMBNAIL_CLIM
     normalized = (intensity.astype(np.float32) / 255.0 - low) / (high - low)
@@ -279,7 +282,7 @@ def center_crop(image, fraction):
 
 def thumbnail_target(source):
     """Output path for a sample's thumbnail, keyed by the sample folder name."""
-    sample_id = source.relative_to(RAW_DIR).parts[0]
+    sample_id = source.relative_to(DATA_DIR).parts[0]
     return THUMBNAIL_DIR / f"{sample_id}.png"
 
 
@@ -287,8 +290,8 @@ def write_thumbnail(volume, target):
     """Write a colormapped, cropped middle slice of `volume` as a PNG.
 
     The middle slice gives a representative 2D preview of the 3D volume, colored
-    with the raw variant's default colormap and cropped to zoom in on the
-    central structure.
+    with the preprocessed variant's default colormap and cropped to zoom in on
+    the central structure.
     """
     target.parent.mkdir(parents=True, exist_ok=True)
     middle = volume[volume.shape[0] // 2]
@@ -299,25 +302,27 @@ def write_thumbnail(volume, target):
 
 def sample_folders():
     """All per-sample folders under data/, sorted for stable output."""
-    return sorted(path for path in RAW_DIR.iterdir() if path.is_dir())
+    return sorted(path for path in DATA_DIR.iterdir() if path.is_dir())
 
 
 def folder_volumes(folder):
     """All .tif/.tiff files in a sample folder.
 
-    Raises SampleError when TIFF volumes are present but the required `raw`
-    volume is missing. An empty result is handled by the caller as a skipped
-    sample.
+    Raises SampleError when TIFF volumes are present but the required
+    `preprocessed` volume is missing. An empty result is handled by the caller
+    as a skipped sample.
     """
     volumes = [
         path
         for path in folder.rglob("*")
         if path.is_file() and path.suffix.lower() in TIF_SUFFIXES
     ]
-    if volumes and not any(path.stem.lower() == RAW_VARIANT for path in volumes):
+    if volumes and not any(
+        path.stem.lower() == PREPROCESSED_VARIANT for path in volumes
+    ):
         raise SampleError(
-            f"Missing {RAW_VARIANT}.tif in {folder.relative_to(ROOT)} "
-            f"(every sample must provide a '{RAW_VARIANT}' volume)"
+            f"Missing {PREPROCESSED_VARIANT}.tif in {folder.relative_to(ROOT)} "
+            f"(every sample must provide a '{PREPROCESSED_VARIANT}' volume)"
         )
     return volumes
 
@@ -384,7 +389,7 @@ def compress_chunk(chunk):
 
 def target_for(source):
     """Output path for a source volume, mirroring its folder under data/."""
-    relative = source.relative_to(RAW_DIR)
+    relative = source.relative_to(DATA_DIR)
     return OUTPUT_DIR / relative.parent / f"{source.stem}.zst"
 
 
@@ -545,11 +550,11 @@ def process(source, crop=True, crop_size=DEFAULT_CROP_SIZE):
     """Read, crop or conditionally downsample, and compress one volume.
 
     The output mirrors the input's folder name, so `data/<sample>/<variant>.tif`
-    becomes `public/volumes/<sample>/<variant>.zst`. The `raw` variant also
-    writes its thumbnail preview.
+    becomes `public/volumes/<sample>/<variant>.zst`. The `preprocessed` variant
+    also writes its thumbnail preview.
 
     Returns the volume's public URL, its `{width, height, depth}`, and the
-    thumbnail path (or None for non-raw variants).
+    thumbnail path (or None for other variants).
     """
     target = target_for(source)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -558,7 +563,7 @@ def process(source, crop=True, crop_size=DEFAULT_CROP_SIZE):
     data = load_volume(source, crop=crop, crop_size=crop_size)
 
     thumbnail = None
-    if source.stem.lower() == RAW_VARIANT:
+    if source.stem.lower() == PREPROCESSED_VARIANT:
         thumbnail = thumbnail_target(source)
         write_thumbnail_from_source(source, thumbnail)
 
@@ -618,7 +623,7 @@ def process(source, crop=True, crop_size=DEFAULT_CROP_SIZE):
 def parse_args(argv=None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="Preprocess raw TIFF volumes into browser-ready .zst files.",
+        description="Prepare TIFF volumes for browser-ready .zst viewing.",
     )
     parser.add_argument(
         "--crop",
@@ -659,7 +664,7 @@ def main() -> None:
 
     folders = sample_folders()
     logger.info(
-        "Found %d sample folder(s) under %s", len(folders), RAW_DIR.relative_to(ROOT)
+        "Found %d sample folder(s) under %s", len(folders), DATA_DIR.relative_to(ROOT)
     )
 
     manifest = read_manifest()
@@ -733,6 +738,11 @@ def main() -> None:
             variants.append(
                 {
                     "type": source.stem,
+                    **(
+                        {"label": PREPROCESSED_VARIANT_LABEL}
+                        if source.stem.lower() == PREPROCESSED_VARIANT
+                        else {}
+                    ),
                     "url": url,
                     "width": dimensions["width"],
                     "height": dimensions["height"],
@@ -743,19 +753,19 @@ def main() -> None:
         if not variants:
             continue
 
-        # Ensure the sample has a thumbnail even when its raw volume was skipped
+        # Ensure the sample has a thumbnail even when its default volume was
         # (e.g. the first run after thumbnails were introduced).
         thumb_target = THUMBNAIL_DIR / f"{folder.name}.png"
         if thumbnail is None and not (args.skip_existing and thumb_target.exists()):
-            raw_source = next(
-                (s for s in volumes if s.stem.lower() == RAW_VARIANT), None
+            preprocessed_source = next(
+                (s for s in volumes if s.stem.lower() == PREPROCESSED_VARIANT), None
             )
-            if raw_source is not None:
+            if preprocessed_source is not None:
                 try:
-                    write_thumbnail_from_source(raw_source, thumb_target)
+                    write_thumbnail_from_source(preprocessed_source, thumb_target)
                 except Exception as error:  # noqa: BLE001 - report and continue
                     failed = True
-                    logger.error("%s: %s", raw_source.name, error)
+                    logger.error("%s: %s", preprocessed_source.name, error)
 
         samples_by_id[folder.name] = {
             "id": folder.name,

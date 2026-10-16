@@ -13,15 +13,16 @@
           "depth": 243
         },
         {
-          "type": "raw",
-          "url": "/volumes/wpi-0.05gg/raw.zst",
+          "type": "skeleton",
+          "url": "/volumes/wpi-0.05gg/skeleton.zst",
           "width": 243,
           "height": 243,
           "depth": 243
         },
         {
-          "type": "skeleton",
-          "url": "/volumes/wpi-0.05gg/skeleton.zst",
+          "type": "preprocessed",
+          "label": "Pre-processed",
+          "url": "/volumes/wpi-0.05gg/preprocessed.zst",
           "width": 243,
           "height": 243,
           "depth": 243
@@ -48,8 +49,9 @@
           "depth": 243
         },
         {
-          "type": "raw",
-          "url": "/volumes/wpi-0.1gg/raw.zst",
+          "type": "preprocessed",
+          "label": "Pre-processed",
+          "url": "/volumes/wpi-0.1gg/preprocessed.zst",
           "width": 243,
           "height": 243,
           "depth": 243

@@ -49,12 +49,13 @@ interface VariantDefaults {
 }
 
 // Global render defaults per variant type, keyed by the source file stem
-// (e.g. `raw.tif` -> "raw"). Adding a sample only requires dropping its
-// volumes and a `sample.yml` into `data/<id>/`; the render configuration is
-// shared across every sample.
+// (e.g. `preprocessed.tif` -> `preprocessed`). The viewer labels it
+// "Pre-processed".
+// Adding a sample only requires dropping its volumes and a `sample.yml` into
+// `data/<id>`; the render configuration is shared across every sample.
 export const VARIANT_DEFAULTS: Record<string, VariantDefaults> = {
-  raw: {
-    label: "Raw",
+  preprocessed: {
+    label: "Pre-processed",
     render: {
       colormap: "inferno",
       alpha: 0.5,
@@ -79,11 +80,16 @@ export function variantDefaults(type: string): VariantDefaults {
 
 // The variant every sample is guaranteed to provide; it is shown first and is
 // the default volume when a sample is opened.
-export const RAW_VARIANT_ID = "raw";
+export const PREPROCESSED_VARIANT_ID = "preprocessed";
 
-/** Variants in display order: the raw variant first, the rest unchanged. */
+/** Variants in display order, with the preprocessed variant first. */
 export function orderVariants(variants: VolumeVariant[]): VolumeVariant[] {
-  const raw = variants.find((variant) => variant.id === RAW_VARIANT_ID);
-  if (!raw) return variants;
-  return [raw, ...variants.filter((variant) => variant !== raw)];
+  const preprocessed = variants.find(
+    (variant) => variant.id === PREPROCESSED_VARIANT_ID,
+  );
+  if (!preprocessed) return variants;
+  return [
+    preprocessed,
+    ...variants.filter((variant) => variant !== preprocessed),
+  ];
 }

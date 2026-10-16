@@ -61,16 +61,16 @@ The preprocessing step needs [Conda](https://docs.conda.io) on your `PATH`. The
 in sync automatically when you run the pipeline, so you don't need to create it
 by hand.
 
-### 2. Add the raw volumes
+### 2. Add the preprocessed volumes
 
-Place each sample in its own folder under `data/`, named after its original
-(raw) volume. Each folder must contain a `sample.yml` with the sample's
-`title` and `description`; the scripts discover folders automatically:
+Place each sample in its own folder under `data/`, named for the sample. Each
+folder must contain a `sample.yml` with the sample's `title` and
+`description`; the scripts discover folders automatically:
 
 ```text
 data/<sample>/
     sample.yml       # required: title + description
-    raw.tif          # required: original volume
+    preprocessed.tif # required: default volume
     segmented.tif    # optional variant
     skeleton.tif     # optional variant
 ```
@@ -81,13 +81,13 @@ title: WPI 0.05% GG
 description: Acid-induced composite gel (3% w/w WPI, 0.05% w/w GG).
 ```
 
-The variant type is the source file's stem (e.g. `raw.tif` -> `raw`), which
-the viewer maps to a global render configuration defined in
-`src/data/variants.ts`. Adding a sample therefore only requires the volumes and
+The variant type is the source file's stem (e.g. `preprocessed.tif` ->
+`preprocessed`), which the viewer maps to a global render configuration
+defined in `src/data/variants.ts`. Adding a sample therefore only requires the volumes and
 `sample.yml` — no frontend changes.
 
-> Note: `*.tif` files are git-ignored, so raw and intermediate volumes are not
-> committed. Only the generated `public/volumes/**/*.raw.zst` files are tracked.
+> Note: `*.tif` files are git-ignored, so source and intermediate volumes are not
+> committed. Only the generated `public/volumes/**/*.zst` files are tracked.
 
 ### 3. Run the pipeline
 
@@ -106,7 +106,9 @@ This runs `preprocessing/run-preprocess.ts`, which:
 slice-major `*.zst` file under `public/volumes/<sample>/`, mirroring the input
 folder name, using zstd's maximum compression level. It then writes
 `manifest.json`, which groups each sample's volumes and records their
-`{width, height, depth}` alongside the sample's title and description. Existing
+`{width, height, depth}` alongside the sample's title and description. The
+required `preprocessed.tif` source is keyed as `preprocessed`, but its generated
+manifest entry is labeled **Pre-processed** for display in the viewer. Existing
 manifest entries are retained for samples that still have `sample.yml` but no
 local TIFFs; entries are removed when `sample.yml` is removed. When TIFFs are
 present, that sample's manifest entry is rebuilt from the available variants,
@@ -188,5 +190,5 @@ To deploy, simply commit and push to `main`:
 git push origin main
 ```
 
-Make sure the generated `public/volumes/**/*.raw.zst` files and `manifest.json`
+Make sure the generated `public/volumes/**/*.zst` files and `manifest.json`
 are committed, since the build does not run the Python preprocessing pipeline.
